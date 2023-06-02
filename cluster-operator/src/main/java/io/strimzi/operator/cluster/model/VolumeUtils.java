@@ -457,7 +457,7 @@ public class VolumeUtils {
      * @return              New valid volume name
      */
     /*test*/ static String makeValidVolumeName(String originalName) {
-        // SHA-1 hash is used for uniqueness
+        // SHA-256 hash is used for uniqueness
         String digestStub = Util.hashStub(originalName);
 
         // Special characters need to be replaced

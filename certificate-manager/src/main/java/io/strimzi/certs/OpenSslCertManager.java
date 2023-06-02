@@ -239,7 +239,6 @@ public class OpenSslCertManager implements CertManager {
         Path newCertsDir = null;
         Path database = null;
         Path attr = null;
-
         try {
             tmpKey = Files.createTempFile(null, null);
             boolean keyInPkcs1;
@@ -258,7 +257,7 @@ public class OpenSslCertManager implements CertManager {
             csrFile = Files.createTempFile(null, null);
             sna = buildConfigFile(subject, true);
             new OpensslArgs("openssl", "req")
-                    .opt("-new")
+                    .opt("-new").opt("-sha256")
                     .optArg("-config", sna, true)
                     .optArg("-key", tmpKey)
                     .optArg("-out", csrFile)
@@ -271,7 +270,7 @@ public class OpenSslCertManager implements CertManager {
             newCertsDir = Files.createTempDirectory(null);
             defaultConfig = createDefaultConfig();
             OpensslArgs opt = new OpensslArgs("openssl", "ca")
-                    .opt("-utf8").opt("-batch").opt("-notext");
+                    .opt("-utf8").opt("-sha256").opt("-batch").opt("-notext");
             if (issuerCaCertFile == null) {
                 opt.opt("-selfsign");
                 opt.optArg("-keyfile", tmpKey);
@@ -406,7 +405,7 @@ public class OpenSslCertManager implements CertManager {
         Objects.requireNonNull(subject);
 
         OpensslArgs cmd = new OpensslArgs("openssl", "req")
-                .opt("-new").opt("-batch").opt("-nodes")
+                .opt("-new").opt("-batch").opt("-nodes").opt("-sha256")
                 .optArg("-keyout", keyFile)
                 .optArg("-out", csrFile);
 
@@ -453,7 +452,7 @@ public class OpenSslCertManager implements CertManager {
             attr = Files.createFile(new File(database.toString() + ".attr").toPath());
             newCertsDir = Files.createTempDirectory(null);
             OpensslArgs cmd = new OpensslArgs("openssl", "ca")
-                    .opt("-utf8").opt("-batch").opt("-notext")
+                    .opt("-utf8").opt("-sha256").opt("-batch").opt("-notext")
                     .optArg("-in", csrFile)
                     .optArg("-out", crtFile)
                     .optArg("-cert", caCert)

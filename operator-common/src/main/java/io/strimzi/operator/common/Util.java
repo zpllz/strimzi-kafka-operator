@@ -503,12 +503,12 @@ public class Util {
     public static String hashStub(byte[] toBeHashed)   {
         try {
             // This is used to generate unique identifier which is not used for security => using SHA-1 is ok
-            MessageDigest sha1 = MessageDigest.getInstance("SHA-1");
+            MessageDigest sha1 = MessageDigest.getInstance("SHA-256");
             byte[] digest = sha1.digest(toBeHashed);
 
             return String.format("%040x", new BigInteger(1, digest)).substring(0, 8);
         } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("Failed to get SHA-1 hash", e);
+            throw new RuntimeException("Failed to get SHA-256 hash", e);
         }
     }
 

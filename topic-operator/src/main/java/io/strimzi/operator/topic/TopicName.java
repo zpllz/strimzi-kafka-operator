@@ -103,7 +103,7 @@ class TopicName {
 
             final MessageDigest md;
             try {
-                md = MessageDigest.getInstance("SHA-1");
+                md = MessageDigest.getInstance("SHA-256");
             } catch (NoSuchAlgorithmException e) {
                 throw new RuntimeException("Couldn't get SHA1 MessageDigest", e);
             }
