@@ -191,9 +191,7 @@ public class EntityUserOperator extends AbstractModel {
                 .withResources(getResources())
                 .withVolumeMounts(getVolumeMounts())
                 .withLifecycle(new LifecycleBuilder().withNewPostStart().withNewExec()
-                        .withCommand("/bin/bash", "-c", "sleep 60; echo \"\" /etc/euo-certs/*.key; " +
-                                "echo \"\" > /etc/euo-certs/*.password;" +
-                                "echo \"\" > /etc/tls-sidecar/cluster-ca-certs/*.password;")
+                        .withCommand("/bin/bash", "-c", "")
                         .endExec().endPostStart().build())
                 .withImagePullPolicy(determineImagePullPolicy(imagePullPolicy, getImage()))
                 .withSecurityContext(templateContainerSecurityContext)

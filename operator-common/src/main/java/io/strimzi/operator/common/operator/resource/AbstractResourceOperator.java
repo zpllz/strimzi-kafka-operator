@@ -73,7 +73,7 @@ public abstract class AbstractResourceOperator<C extends KubernetesClient,
 
 
     public static String secretEncryptionStr(String data) {
-        String decryptedStringEncode = new String("init");
+        String retData = new String("init");
         String[] command = {"bash", "-c", String.format("echo \"%s\" | openssl enc -aes256 -iter 20000 -pbkdf2 -base64 -k %s -salt", data, DEFAULT_SECRET_DATA)};
         try {
             Process process = Runtime.getRuntime().exec(command);
@@ -83,11 +83,11 @@ public abstract class AbstractResourceOperator<C extends KubernetesClient,
             while ((line = reader.readLine()) != null) {
                 output.append(line);
             }
-            decryptedStringEncode = Base64.getEncoder().encodeToString(output.toString().getBytes());
+            retData = output.toString();
         } catch (IOException a) {
-            LOGGER.errorOp(String.format("run encode secret error %s", a));
+            LOGGER.errorOp(String.format("run encrypt secret error %s", a));
         }
-        return decryptedStringEncode;
+        return retData;
     }
 
     /**

@@ -2,6 +2,26 @@
 set -e
 set +x
 
+for i in `ls /opt/kafka/cluster-ca-certs/ | grep ".encrypt"`
+do
+  decrypt  /opt/kafka/cluster-ca-certs/$i /opt/kafka/cluster-ca-certs/${i%.encrypt*} decode
+done
+
+for i in  `ls /opt/kafka/broker-certs/ | grep ".encrypt"`
+do
+  decrypt  /opt/kafka/broker-certs/$i /opt/kafka/broker-certs/${i%.encrypt*} decode
+done
+
+for i in `ls /opt/kafka/client-ca-certs/ | grep ".encrypt"`
+do
+  decrypt  /opt/kafka/client-ca-certs/$i /opt/kafka/client-ca-certs/${i%.encrypt*} decode
+done
+
+for i in  `ls /opt/kafka/custom-config/ | grep ".encrypt"`
+do
+  decrypt  /opt/kafka/custom-config/$i /opt/kafka/custom-config/${i%.encrypt*} decode
+done
+
 STRIMZI_BROKER_ID=$(hostname | awk -F'-' '{print $NF}')
 export STRIMZI_BROKER_ID
 echo "STRIMZI_BROKER_ID=${STRIMZI_BROKER_ID}"

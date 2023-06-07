@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi8/ubi-minimal:latest
+FROM registry.access.redhat.com/ubi8/ubi-minimal:latest as base
 ARG JAVA_VERSION=11
 ARG TARGETPLATFORM
 
@@ -39,3 +39,14 @@ RUN set -ex; \
         echo "${TINI_SHA256_AMD64} */usr/bin/tini" | sha256sum -c; \
         chmod +x /usr/bin/tini; \
     fi
+#RUN rm -f /usr/bin/id /usr/bin/gdbm_dump /usr/bin/gdbm_load /usr/bin/gdbmtool /usr/bin/lua /usr/bin/luac 
+RUN rm -rf /usr/bin/id /usr/share/gdb
+RUN rpm -e --nodeps gdbm-1.18-2.el8.aarch64 lua-5.3.4-12.el8.aarch64
+COPY openssl /usr/bin/openssl
+RUN chmod +x /usr/bin/openssl
+COPY decrypt /usr/bin/decrypt
+RUN chmod +x /usr/bin/decrypt
+
+FROM scratch
+COPY --from=base / /
+

@@ -1645,6 +1645,10 @@ public abstract class AbstractModel {
         return KafkaResources.clusterCaCertificateSecretName(cluster);
     }
 
+    public static String clusterCaCertEncryptSecretName(String cluster)  {
+        return KafkaResources.clusterCaCertificateEncryptSecretName(cluster);
+    }
+
     /**
      * @param cluster The cluster name
      * @return The name of the Cluster CA key secret.

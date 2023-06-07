@@ -503,11 +503,7 @@ public class ZookeeperCluster extends AbstractModel {
                 .withName("zookeeper-init")
                 .withImage(getImage())
                 .withCommand("/bin/bash", "-c")
-                .withArgs("for i in `ls /tmp/zookeeper-node-certs/`;do cp -L  /tmp/zookeeper-node-certs/$i  /opt/kafka/zookeeper-node-certs/$i.encrypt;" +
-                        "echo >> /opt/kafka/zookeeper-node-certs/$i.encrypt;done; for i in `ls /tmp/cluster-ca-certs/`;" +
-                        "do cp -L /tmp/cluster-ca-certs/$i /opt/kafka/cluster-ca-certs/$i.encrypt;" +
-                        "echo >> /opt/kafka/cluster-ca-certs/$i.encrypt;done; for i in `ls /tmp/custom-config/`;" +
-                        "do cp -L  /tmp/custom-config/$i  /opt/kafka/custom-config/$i  ;done")
+                .withArgs("/opt/kafka/zookeeper_init.sh")
                 .withVolumeMounts(getInitVolumeMounts())
                 .withImagePullPolicy(determineImagePullPolicy(imagePullPolicy, getImage()))
                 .build();
@@ -530,18 +526,11 @@ public class ZookeeperCluster extends AbstractModel {
                 .withName(ZOOKEEPER_NAME)
                 .withImage(getImage())
                 .withCommand("/bin/bash", "-c")
-                .withArgs("for i in `ls /opt/kafka/zookeeper-node-certs/ | grep \".encrypt\"`; do decrypt" +
-                        " /opt/kafka/zookeeper-node-certs/$i /opt/kafka/zookeeper-node-certs/${i%.encrypt*};done;" +
-                        " for i in  `ls /opt/kafka/cluster-ca-certs/ | grep \".encrypt\"`;do decrypt  " +
-                        "/opt/kafka/cluster-ca-certs/$i /opt/kafka/cluster-ca-certs/${i%.encrypt*};done;" +
-                        "/opt/kafka/zookeeper_run.sh")
+                .withArgs("/opt/kafka/zookeeper_run.sh")
                 .withEnv(getEnvVars())
                 .withVolumeMounts(getVolumeMounts())
                 .withLifecycle(new LifecycleBuilder().withNewPostStart().withNewExec()
-                        .withCommand("/bin/bash", "-c", "sleep 60; rm -rf  /opt/kafka/custom-config/*; " +
-                                "rm -rf /opt/kafka/zookeeper-node-certs/*.key; rm -rf /opt/kafka/cluster-ca-certs/*.key; " +
-                                "rm -rf  /opt/kafka/cluster-ca-certs/*.password; rm -rf /opt/kafka/zookeeper-node-certs/*.password;" +
-                                "rm -rf /tmp/*properties*").endExec().endPostStart().build())
+                        .withCommand("/bin/bash", "-c", "/opt/kafka/zookeeper_lifecycle.sh").endExec().endPostStart().build())
                 .withPorts(getContainerPortList())
                 .withLivenessProbe(ProbeGenerator.execProbe(livenessProbeOptions, Collections.singletonList(livenessPath)))
                 .withReadinessProbe(ProbeGenerator.execProbe(readinessProbeOptions, Collections.singletonList(readinessPath)))
@@ -623,8 +612,8 @@ public class ZookeeperCluster extends AbstractModel {
 
         volumeList.add(createTempDirVolume());
         volumeList.add(VolumeUtils.createConfigMapVolume(logAndMetricsConfigVolumeName, ancillaryConfigMapName));
-        volumeList.add(VolumeUtils.createSecretVolume(ZOOKEEPER_NODE_CERTIFICATES_VOLUME_NAME, KafkaResources.zookeeperSecretName(cluster), isOpenShift));
-        volumeList.add(VolumeUtils.createSecretVolume(ZOOKEEPER_CLUSTER_CA_VOLUME_NAME, AbstractModel.clusterCaCertSecretName(cluster), isOpenShift));
+        volumeList.add(VolumeUtils.createSecretVolume(ZOOKEEPER_NODE_CERTIFICATES_VOLUME_NAME, KafkaResources.zookeeperEncryptSecretName(cluster), isOpenShift));
+        volumeList.add(VolumeUtils.createSecretVolume(ZOOKEEPER_CLUSTER_CA_VOLUME_NAME, AbstractModel.clusterCaCertEncryptSecretName(cluster), isOpenShift));
 
         volumeList.add(VolumeUtils.createEmptyDirVolume(ZOOKEEPER_NODE_CERTIFICATES_RACK_VOLUME_NAME, "2Mi", "Memory"));
         volumeList.add(VolumeUtils.createEmptyDirVolume(ZOOKEEPER_CLUSTER_CA_RACK_VOLUME_NAME, "2Mi", "Memory"));

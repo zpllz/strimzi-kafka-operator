@@ -20,6 +20,10 @@ public class KafkaResources {
         return clusterName + "-cluster-ca-cert";
     }
 
+    public static String clusterCaCertificateEncryptSecretName(String clusterName) {
+        return clusterName + "-cluster-ca-cert-encrypt";
+    }
+
     /**
      * Returns the name of the Cluster CA key {@code Secret} for a {@code Kafka} cluster of the given name.
      * @param clusterName  The {@code metadata.name} of the {@code Kafka} resource.
@@ -36,6 +40,10 @@ public class KafkaResources {
      */
     public static String clientsCaCertificateSecretName(String clusterName) {
         return clusterName + "-clients-ca-cert";
+    }
+
+    public static String clientsCaCertificateEncryptSecretName(String clusterName) {
+        return clusterName + "-clients-ca-cert-encrypt";
     }
 
     /**
@@ -143,6 +151,10 @@ public class KafkaResources {
         return clusterName + "-kafka-config";
     }
 
+    public static String kafkaMetricsAndLogEncryptConfigMapName(String clusterName) {
+        return clusterName + "-kafka-config-encrypt";
+    }
+
     /**
      * Get the name of the resource init container role binding given the name of the {@code namespace} and {@code cluster}.
      *
@@ -163,6 +175,10 @@ public class KafkaResources {
      */
     public static String kafkaSecretName(String clusterName) {
         return clusterName + "-kafka-brokers";
+    }
+
+    public static String kafkaEncryptSecretName(String clusterName) {
+        return clusterName + "-kafka-brokers-encrypt";
     }
 
     /**
@@ -248,6 +264,10 @@ public class KafkaResources {
         return clusterName + "-zookeeper-nodes";
     }
 
+    public static String zookeeperEncryptSecretName(String clusterName) {
+        return clusterName + "-zookeeper-nodes-encrypt";
+    }
+
     /**
      * Returns the name of the ZooKeeper Secret with JMX credentials.
      *
@@ -317,6 +337,10 @@ public class KafkaResources {
         return clusterName + "-entity-topic-operator-certs";
     }
 
+    public static String entityTopicOperatorEncryptSecretName(String clusterName) {
+        return clusterName + "-entity-topic-operator-certs-encrypt";
+    }
+
     /**
      * Returns the name of the Entity Topic Operator logging {@code ConfigMap} for a {@code Kafka} cluster of the given name.
      *
@@ -352,6 +376,10 @@ public class KafkaResources {
      */
     public static String entityUserOperatorSecretName(String clusterName) {
         return clusterName + "-entity-user-operator-certs";
+    }
+
+    public static String entityUserOperatorEncryptSecretName(String clusterName) {
+        return clusterName + "-entity-user-operator-certs-encrypt";
     }
 
     /**

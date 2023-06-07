@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -e
 
+for i in `ls /etc/eto-certs/ | grep ".encrypt"`
+do
+  decrypt  /etc/eto-certs/$i /etc/eto-certs/${i%.encrypt*} decode
+done
+
+for i in  `ls /etc/tls-sidecar/cluster-ca-certs/ | grep ".encrypt"`
+do
+  decrypt  /etc/tls-sidecar/cluster-ca-certs/$i /etc/tls-sidecar/cluster-ca-certs/${i%.encrypt*} decode
+done
+
 # Clean-up /tmp directory from files which might have remained from previous container restart
 rm -rfv /tmp/*
 

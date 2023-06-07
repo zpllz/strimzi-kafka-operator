@@ -1,4 +1,4 @@
-FROM strimzi/base:latest
+FROM dockerhub.qingcloud.com/kafka_arm/base as base
 
 # Add strimzi user with UID 1001
 # The user is in the group 0 to have access to the mounted volumes and storage
@@ -14,4 +14,13 @@ COPY scripts/ tmp/bin/ bin/
 
 COPY tmp/lib/ lib/
 
+USER 1001
+
+FROM scratch
+
+COPY --from=base / /
+ARG strimzi_version=1.0-SNAPSHOT
+ENV STRIMZI_VERSION ${strimzi_version}
+ENV STRIMZI_HOME=/opt/strimzi
+WORKDIR ${STRIMZI_HOME}
 USER 1001

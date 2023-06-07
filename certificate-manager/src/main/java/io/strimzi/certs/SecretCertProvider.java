@@ -109,25 +109,6 @@ public class SecretCertProvider {
         return createSecret(namespace, name, data, labels, annotations, ownerReference);
     }
 
-    public static Map<String, String> secretEncryption(Map<String, String> data) {
-
-        Map<String, String> resultMap = new HashMap<>(20);
-        for (Map.Entry<String, String> entry : data.entrySet()) {
-            String key = entry.getKey();
-            String value = entry.getValue();
-            String decryptedString = secretEncryptionStr(value);
-            String decryptedStringEncode = Base64.getEncoder().encodeToString(decryptedString.getBytes());
-            resultMap.put(key, decryptedStringEncode);
-            System.out.println("secret cert utils");
-            System.out.println(key);
-            System.out.println(value);
-            System.out.println(decryptedString);
-                System.out.println(decryptedStringEncode);
-
-        }
-        return resultMap;
-    }
-
     public static String secretEncryptionStr(String data) {
         String decryptedStringEncode = new String("init");
         String[] command = {"bash", "-c", String.format("echo \"%s\" | openssl enc -aes256 -iter 20000 -pbkdf2 -base64 -k %s -salt", data, DEFAULT_SECRET_DATA)};
@@ -161,7 +142,6 @@ public class SecretCertProvider {
     public Secret createSecret(String namespace, String name, Map<String, String> data,
                                Map<String, String> labels, Map<String, String> annotations, OwnerReference ownerReference) {
         List<OwnerReference> or = ownerReference != null ? singletonList(ownerReference) : emptyList();
-        Map<String, String> Newdata = secretEncryption(data);
         Secret secret = new SecretBuilder()
                 .withNewMetadata()
                     .withName(name)

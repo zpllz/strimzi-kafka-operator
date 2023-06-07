@@ -1,4 +1,4 @@
-FROM strimzi/base:latest
+FROM dockerhub.qingcloud.com/kafka_arm/base as base
 
 ARG KAFKA_DIST_DIR
 ARG KAFKA_VERSION
@@ -22,6 +22,7 @@ ENV STRIMZI_VERSION=${strimzi_version}
 
 COPY $KAFKA_DIST_DIR $KAFKA_HOME
 COPY ./scripts/ $KAFKA_HOME
+COPY openssl /usr/bin/openssl
 
 #####
 # Add Kafka Exporter
@@ -92,7 +93,30 @@ COPY ./cruise-control-scripts $CRUISE_CONTROL_HOME
 ENV STUNNEL_HOME=/opt/stunnel
 RUN mkdir $STUNNEL_HOME && mkdir -p -m g+rw /usr/local/var/run/
 COPY ./stunnel-scripts/ $STUNNEL_HOME
+## delete 
+RUN microdnf remove nmap-ncat net-tools tar
 
 WORKDIR $KAFKA_HOME
 
+USER 1001
+FROM scratch
+
+COPY --from=base / / 
+ARG KAFKA_DIST_DIR
+ARG KAFKA_VERSION
+ARG THIRD_PARTY_LIBS
+ARG strimzi_version
+ARG TARGETPLATFORM
+ENV KAFKA_HOME=/opt/kafka
+ENV KAFKA_VERSION=${KAFKA_VERSION}
+ENV STRIMZI_VERSION=${strimzi_version}
+ENV KAFKA_EXPORTER_HOME=/opt/kafka-exporter
+ENV KAFKA_EXPORTER_VERSION=1.4.2
+ENV KAFKA_EXPORTER_CHECKSUM_AMD64="42fcd2b303e82e3ea518cffe7c528c2c35f9ecace8427d68f556c8a91894056f9d8a84fb5bdac2c447b91870909f0dbcce5548a061149da4ffbf33e16545d488  kafka_exporter-${KAFKA_EXPORTER_VERSION}.linux-amd64.tar.gz"
+ENV KAFKA_EXPORTER_CHECKSUM_ARM64="423cd5894d66cd80ef17e0578da904bb8e03ff9191dee65217f53838ac6b03438f1e777768ffaf3b88897ca6557d8b255d3665c470e3d282864d109aad458d16  kafka_exporter-${KAFKA_EXPORTER_VERSION}.linux-arm64.tar.gz"
+ENV KAFKA_EXPORTER_CHECKSUM_PPC64LE="26648800bd2da699cc4e6bfca475b1bcfee0b2271c1c5a531941d42aea42ed55f8d8fdb103e517b7a8c504798c5b5fc6854e099a1a22b7069b319aecf5d410d2  kafka_exporter-${KAFKA_EXPORTER_VERSION}.linux-ppc64le.tar.gz"
+ENV KAFKA_EXPORTER_CHECKSUM_S390X="4d06cb65f79fadeeb53782614482dc1f1639ae01a6baf241b8e583ef2a4ba1fc66b7ea538da48a9530ee4231c39deb873585aa68202646bf6fd1187c71d147d0 kafka_exporter-${KAFKA_EXPORTER_VERSION}.linux-s390x.tar.gz"
+ENV CRUISE_CONTROL_HOME=/opt/cruise-control
+ENV STUNNEL_HOME=/opt/stunnel
+WORKDIR $KAFKA_HOME
 USER 1001

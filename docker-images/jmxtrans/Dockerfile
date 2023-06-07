@@ -1,4 +1,4 @@
-FROM strimzi/base:latest
+FROM dockerhub.qingcloud.com/kafka_arm/base:latest
 
 ENV JMXTRANS_HOME /usr/share/jmxtrans
 ENV PATH $JMXTRANS_HOME/bin:$PATH

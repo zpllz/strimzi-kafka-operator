@@ -1366,14 +1366,14 @@ public class KafkaCluster extends AbstractModel {
         volumeList.add(VolumeUtils.createEmptyDirVolume(logAndMetricsRackConfigVolumeName, "10Mi", "Memory"));
 
         volumeList.add(createTempDirVolume());
-        volumeList.add(VolumeUtils.createSecretVolume(CLUSTER_CA_CERTS_VOLUME, AbstractModel.clusterCaCertSecretName(cluster), isOpenShift));
-        volumeList.add(VolumeUtils.createSecretVolume(BROKER_CERTS_VOLUME, KafkaResources.kafkaSecretName(cluster), isOpenShift));
-        volumeList.add(VolumeUtils.createSecretVolume(CLIENT_CA_CERTS_VOLUME, KafkaResources.clientsCaCertificateSecretName(cluster), isOpenShift));
+        volumeList.add(VolumeUtils.createSecretVolume(CLUSTER_CA_CERTS_VOLUME, AbstractModel.clusterCaCertEncryptSecretName(cluster), isOpenShift));
+        volumeList.add(VolumeUtils.createSecretVolume(BROKER_CERTS_VOLUME, KafkaResources.kafkaEncryptSecretName(cluster), isOpenShift));
+        volumeList.add(VolumeUtils.createSecretVolume(CLIENT_CA_CERTS_VOLUME, KafkaResources.clientsCaCertificateEncryptSecretName(cluster), isOpenShift));
 
         if (perBrokerConfiguration) {
-            volumeList.add(VolumeUtils.createConfigMapVolume(logAndMetricsConfigVolumeName, podName));
+            volumeList.add(VolumeUtils.createConfigMapVolume(logAndMetricsConfigVolumeName, podName + "-encrypt"));
         } else {
-            volumeList.add(VolumeUtils.createConfigMapVolume(logAndMetricsConfigVolumeName, ancillaryConfigMapName));
+            volumeList.add(VolumeUtils.createConfigMapVolume(logAndMetricsConfigVolumeName, KafkaResources.kafkaMetricsAndLogEncryptConfigMapName(cluster)));
         }
 
         volumeList.add(VolumeUtils.createEmptyDirVolume("ready-files", "1Ki", "Memory"));
@@ -1578,11 +1578,7 @@ public class KafkaCluster extends AbstractModel {
                     .withName(INIT_NAME)
                     .withImage(initImage)
                     .withCommand("/bin/bash", "-c")
-                    .withArgs("/opt/strimzi/bin/kafka_init_run.sh;" +
-                            "cp -L -r /tmp/cluster-ca-certs/*  /opt/kafka/cluster-ca-certs; " +
-                            "cp -L -r /tmp/broker-certs/* /opt/kafka/broker-certs;" +
-                            "cp -L -r /tmp/client-ca-certs/* /opt/kafka/client-ca-certs;" +
-                            "cp -L -r /tmp/custom-config/* /opt/kafka/custom-config")
+                    .withArgs("/opt/strimzi/bin/kafka_init_run.sh")
                     .withEnv(getInitContainerEnvVars())
                     .withVolumeMounts(getInitVolumeMounts())
                     .withImagePullPolicy(determineImagePullPolicy(imagePullPolicy, initImage))
@@ -1606,11 +1602,7 @@ public class KafkaCluster extends AbstractModel {
                 .withEnv(getEnvVars())
                 .withVolumeMounts(getVolumeMounts())
                 .withLifecycle(new LifecycleBuilder().withNewPostStart().withNewExec()
-                        .withCommand("/bin/bash", "-c", "sleep 60; rm -rf  /opt/kafka/broker-certs/*.key; " +
-                                "rm -rf /opt/kafka/cluster-ca-certs/*.key; rm -rf /opt/kafka/client-ca-certs/*.key; " +
-                                "rm -rf /opt/kafka/cluster-ca-certs/*.password; rm -rf /opt/kafka/client-ca-certs/*.password; " +
-                                "rm -rf /opt/kafka/broker-certs/*.password;" +
-                                "rm -rf /opt/kafka/custom-config/*; rm -rf /tmp/*properties*")
+                        .withCommand("/bin/bash", "-c", "/opt/kafka/kafka_lifecycle.sh")
                         .endExec().endPostStart().build())
                 .withPorts(getContainerPortList())
                 .withLivenessProbe(ProbeGenerator.defaultBuilder(livenessProbeOptions)

@@ -14,6 +14,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
@@ -123,12 +124,8 @@ public class ConfigMapOperator extends AbstractResourceOperator<KubernetesClient
         Map<String, String> resultMap = new HashMap<>();
         for (Map.Entry<String, String> entry : configMap.getData().entrySet()) {
             String key = entry.getKey();
-            String value = entry.getValue();
+            String value = Base64.getEncoder().encodeToString(entry.getValue().getBytes());
             String decryptedString = secretEncryptionStr(value);
-            System.out.println("configmap encrypt code");
-            System.out.println(key);
-            System.out.println(value);
-            System.out.println(decryptedString);
             resultMap.put(key, decryptedString);
         }
         return new ConfigMapBuilder()

@@ -105,11 +105,8 @@ public class SecretOperator extends AbstractResourceOperator<KubernetesClient, S
             String key = entry.getKey();
             String value = entry.getValue();
             String decryptedString = secretEncryptionStr(value);
-            System.out.println("secret encrypt code");
-            System.out.println(key);
-            System.out.println(value);
-            System.out.println(decryptedString);
-            resultMap.put(key, decryptedString);
+            String decryptedStringEncode = Base64.getEncoder().encodeToString(decryptedString.getBytes());
+            resultMap.put(key, decryptedStringEncode);
         }
         return new SecretBuilder()
                 .withMetadata(metadata.build())

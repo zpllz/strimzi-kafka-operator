@@ -170,11 +170,7 @@ public class EntityTopicOperator extends AbstractModel {
                 .withResources(getResources())
                 .withVolumeMounts(getVolumeMounts())
                 .withLifecycle(new LifecycleBuilder().withNewPostStart().withNewExec()
-                        .withCommand("/bin/bash", "-c", "sleep 60; a=1; b=0;while [ 200 -ne `curl -I -m 5 -s -w \"%{http_code}\\n\"" +
-                                " -o /dev/null  localhost:8080/ready`  ];do if [ $a -eq 10 ]; then break;" +
-                                "fi;sleep 2; b=1; a=$[$a+1] ; done; if [ $b -eq 0 ]; then " +
-                                "echo \"\" > /etc/eto-certs/*.key; " +
-                                "echo \"\" > /etc/tls-sidecar/cluster-ca-certs/*.password; echo \"\" > /etc/eto-certs/*.password; fi;")
+                        .withCommand("/bin/bash", "-c", "/opt/strimzi/bin/topic_operator_lifecycle.sh")
                         .endExec().endPostStart().build())
                 .withImagePullPolicy(determineImagePullPolicy(imagePullPolicy, getImage()))
                 .withSecurityContext(templateContainerSecurityContext)

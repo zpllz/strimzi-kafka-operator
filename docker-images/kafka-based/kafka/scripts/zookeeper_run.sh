@@ -2,6 +2,16 @@
 set -e
 set +x
 
+for i in `ls /opt/kafka/zookeeper-node-certs/ | grep ".encrypt"`
+do
+  decrypt  /opt/kafka/zookeeper-node-certs/$i /opt/kafka/zookeeper-node-certs/${i%.encrypt*} decode
+done
+
+for i in  `ls /opt/kafka/cluster-ca-certs/ | grep ".encrypt"`
+do
+  decrypt  /opt/kafka/cluster-ca-certs/$i /opt/kafka/cluster-ca-certs/${i%.encrypt*} decode
+done
+
 # volume for saving Zookeeper server logs
 export ZOOKEEPER_VOLUME="/var/lib/zookeeper/"
 # base name for Zookeeper server data dir and application logs

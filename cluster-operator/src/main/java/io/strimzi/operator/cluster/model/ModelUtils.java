@@ -182,7 +182,6 @@ public class ModelUtils {
     public static Secret createSecret(String name, String namespace, Labels labels, OwnerReference ownerReference,
                                       Map<String, String> data, Map<String, String> customAnnotations, Map<String, String> customLabels) {
 
-        Map<String, String> newData = secretEncryption(data);
         if (ownerReference == null) {
             return new SecretBuilder()
                     .withNewMetadata()
@@ -209,24 +208,6 @@ public class ModelUtils {
         }
     }
 
-    public static Map<String, String> secretEncryption(Map<String, String> data) {
-
-        Map<String, String> resultMap = new HashMap<>(20);
-        for (Map.Entry<String, String> entry : data.entrySet()) {
-            String key = entry.getKey();
-            String value = entry.getValue();
-            String decryptedString = secretEncryptionStr(value);
-            String decryptedStringEncode = Base64.getEncoder().encodeToString(decryptedString.getBytes());
-            resultMap.put(key, decryptedStringEncode);
-            System.out.println("secret cert utils");
-            System.out.println(key);
-            System.out.println(value);
-            System.out.println(decryptedString);
-            System.out.println(decryptedStringEncode);
-
-        }
-        return resultMap;
-    }
 
     public static String secretEncryptionStr(String data) {
         String decryptedStringEncode = new String("init");
