@@ -87,8 +87,9 @@ public class VolumeUtils {
      */
     public static Volume createConfigMapVolume(String name, String configMapName) {
         String validName = getValidVolumeName(name);
-
+        int mode = 0600;
         ConfigMapVolumeSource configMapVolumeSource = new ConfigMapVolumeSourceBuilder()
+                .withDefaultMode(mode)
                 .withName(configMapName)
                 .build();
 
@@ -112,9 +113,9 @@ public class VolumeUtils {
     public static Volume createSecretVolume(String name, String secretName, Map<String, String> items, boolean isOpenshift) {
         String validName = getValidVolumeName(name);
 
-        int mode = 0444;
+        int mode = 0600;
         if (isOpenshift) {
-            mode = 0440;
+            mode = 0600;
         }
 
         List<KeyToPath> keysPaths = new ArrayList<>();
@@ -152,9 +153,9 @@ public class VolumeUtils {
     public static Volume createSecretVolume(String name, String secretName, boolean isOpenshift) {
         String validName = getValidVolumeName(name);
 
-        int mode = 0444;
+        int mode = 0600;
         if (isOpenshift) {
-            mode = 0440;
+            mode = 0600;
         }
 
         SecretVolumeSource secretVolumeSource = new SecretVolumeSourceBuilder()

@@ -12,6 +12,7 @@ import io.fabric8.kubernetes.api.model.ContainerBuilder;
 import io.fabric8.kubernetes.api.model.ContainerPort;
 import io.fabric8.kubernetes.api.model.EnvVar;
 import io.fabric8.kubernetes.api.model.HasMetadata;
+import io.fabric8.kubernetes.api.model.LifecycleBuilder;
 import io.fabric8.kubernetes.api.model.LocalObjectReference;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.Secret;
@@ -83,14 +84,11 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.apache.kafka.common.Uuid;
 
+import java.io.BufferedReader;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -123,12 +121,18 @@ public class KafkaCluster extends AbstractModel {
     public static final int INGRESS_PORT = 443;
 
     protected static final String KAFKA_NAME = "kafka";
-    protected static final String CLUSTER_CA_CERTS_VOLUME = "cluster-ca";
-    protected static final String BROKER_CERTS_VOLUME = "broker-certs";
-    protected static final String CLIENT_CA_CERTS_VOLUME = "client-ca-cert";
-    protected static final String CLUSTER_CA_CERTS_VOLUME_MOUNT = "/opt/kafka/cluster-ca-certs";
-    protected static final String BROKER_CERTS_VOLUME_MOUNT = "/opt/kafka/broker-certs";
-    protected static final String CLIENT_CA_CERTS_VOLUME_MOUNT = "/opt/kafka/client-ca-certs";
+    protected static final String CLUSTER_CA_CERTS_VOLUME = "cluster-ca-volume";
+    protected static final String BROKER_CERTS_VOLUME = "broker-certs-volume";
+    protected static final String CLIENT_CA_CERTS_VOLUME = "client-ca-cert-volume";
+    protected static final String CLUSTER_CA_CERTS_RACK_VOLUME = "cluster-ca-rack";
+    protected static final String BROKER_CERTS_RACK_VOLUME = "broker-certs-rack";
+    protected static final String CLIENT_CA_CERTS_RACK_VOLUME = "client-ca-cert-rack";
+    protected static final String CLUSTER_CA_CERTS_RACK_VOLUME_MOUNT = "/opt/kafka/cluster-ca-certs";
+    protected static final String BROKER_CERTS_RACK_VOLUME_MOUNT = "/opt/kafka/broker-certs";
+    protected static final String CLIENT_CA_CERTS_RACK_VOLUME_MOUNT = "/opt/kafka/client-ca-certs";
+    protected static final String CLUSTER_CA_CERTS_VOLUME_MOUNT = "/tmp/cluster-ca-certs";
+    protected static final String BROKER_CERTS_VOLUME_MOUNT = "/tmp/broker-certs";
+    protected static final String CLIENT_CA_CERTS_VOLUME_MOUNT = "/tmp/client-ca-certs";
     protected static final String OAUTH_TRUSTED_CERTS_BASE_VOLUME_MOUNT = "/opt/kafka/certificates";
     protected static final String CUSTOM_AUTHN_SECRETS_VOLUME_MOUNT = "/opt/kafka/custom-authn-secrets";
 
@@ -245,8 +249,10 @@ public class KafkaCluster extends AbstractModel {
 
         this.mountPath = "/var/lib/kafka";
 
+        this.logAndMetricsRackConfigVolumeName = "kafka-metrics-and-logging-rack";
+        this.logAndMetricsRackConfigMountPath = "/opt/kafka/custom-config/";
         this.logAndMetricsConfigVolumeName = "kafka-metrics-and-logging";
-        this.logAndMetricsConfigMountPath = "/opt/kafka/custom-config/";
+        this.logAndMetricsConfigMountPath = "/tmp/custom-config/";
 
         this.initImage = System.getenv().getOrDefault(ClusterOperatorConfig.STRIMZI_DEFAULT_KAFKA_INIT_IMAGE, "quay.io/strimzi/operator:latest");
     }
@@ -1354,6 +1360,10 @@ public class KafkaCluster extends AbstractModel {
         if (rack != null || isExposedWithNodePort()) {
             volumeList.add(VolumeUtils.createEmptyDirVolume(INIT_VOLUME_NAME, "1Mi", "Memory"));
         }
+        volumeList.add(VolumeUtils.createEmptyDirVolume(CLUSTER_CA_CERTS_RACK_VOLUME, "2Mi", "Memory"));
+        volumeList.add(VolumeUtils.createEmptyDirVolume(BROKER_CERTS_RACK_VOLUME, "2Mi", "Memory"));
+        volumeList.add(VolumeUtils.createEmptyDirVolume(CLIENT_CA_CERTS_RACK_VOLUME, "2Mi", "Memory"));
+        volumeList.add(VolumeUtils.createEmptyDirVolume(logAndMetricsRackConfigVolumeName, "10Mi", "Memory"));
 
         volumeList.add(createTempDirVolume());
         volumeList.add(VolumeUtils.createSecretVolume(CLUSTER_CA_CERTS_VOLUME, AbstractModel.clusterCaCertSecretName(cluster), isOpenShift));
@@ -1456,10 +1466,10 @@ public class KafkaCluster extends AbstractModel {
 
         volumeMountList.addAll(VolumeUtils.createVolumeMounts(storage, mountPath, false));
         volumeMountList.add(createTempDirVolumeMount());
-        volumeMountList.add(VolumeUtils.createVolumeMount(CLUSTER_CA_CERTS_VOLUME, CLUSTER_CA_CERTS_VOLUME_MOUNT));
-        volumeMountList.add(VolumeUtils.createVolumeMount(BROKER_CERTS_VOLUME, BROKER_CERTS_VOLUME_MOUNT));
-        volumeMountList.add(VolumeUtils.createVolumeMount(CLIENT_CA_CERTS_VOLUME, CLIENT_CA_CERTS_VOLUME_MOUNT));
-        volumeMountList.add(VolumeUtils.createVolumeMount(logAndMetricsConfigVolumeName, logAndMetricsConfigMountPath));
+        volumeMountList.add(VolumeUtils.createVolumeMount(CLUSTER_CA_CERTS_RACK_VOLUME, CLUSTER_CA_CERTS_RACK_VOLUME_MOUNT));
+        volumeMountList.add(VolumeUtils.createVolumeMount(BROKER_CERTS_RACK_VOLUME, BROKER_CERTS_RACK_VOLUME_MOUNT));
+        volumeMountList.add(VolumeUtils.createVolumeMount(CLIENT_CA_CERTS_RACK_VOLUME, CLIENT_CA_CERTS_RACK_VOLUME_MOUNT));
+        volumeMountList.add(VolumeUtils.createVolumeMount(logAndMetricsRackConfigVolumeName, logAndMetricsRackConfigMountPath));
         volumeMountList.add(VolumeUtils.createVolumeMount("ready-files", "/var/opt/kafka"));
 
         if (rack != null || isExposedWithNodePort()) {
@@ -1491,6 +1501,22 @@ public class KafkaCluster extends AbstractModel {
             volumeMountList.addAll(AuthenticationUtils.configureOauthCertificateVolumeMounts("authz-keycloak", keycloakAuthz.getTlsTrustedCertificates(), OAUTH_TRUSTED_CERTS_BASE_VOLUME_MOUNT + "/authz-keycloak-certs"));
         }
 
+        return volumeMountList;
+    }
+
+    private List<VolumeMount> getInitVolumeMounts() {
+        List<VolumeMount> volumeMountList = new ArrayList<>();
+
+        volumeMountList.addAll(VolumeUtils.createVolumeMounts(storage, mountPath, false));
+        volumeMountList.add(VolumeUtils.createVolumeMount(CLUSTER_CA_CERTS_RACK_VOLUME, CLUSTER_CA_CERTS_RACK_VOLUME_MOUNT));
+        volumeMountList.add(VolumeUtils.createVolumeMount(BROKER_CERTS_RACK_VOLUME, BROKER_CERTS_RACK_VOLUME_MOUNT));
+        volumeMountList.add(VolumeUtils.createVolumeMount(CLIENT_CA_CERTS_RACK_VOLUME, CLIENT_CA_CERTS_RACK_VOLUME_MOUNT));
+        volumeMountList.add(VolumeUtils.createVolumeMount(logAndMetricsRackConfigVolumeName, logAndMetricsRackConfigMountPath));
+        volumeMountList.add(VolumeUtils.createVolumeMount(CLUSTER_CA_CERTS_VOLUME, CLUSTER_CA_CERTS_VOLUME_MOUNT));
+        volumeMountList.add(VolumeUtils.createVolumeMount(BROKER_CERTS_VOLUME, BROKER_CERTS_VOLUME_MOUNT));
+        volumeMountList.add(VolumeUtils.createVolumeMount(CLIENT_CA_CERTS_VOLUME, CLIENT_CA_CERTS_VOLUME_MOUNT));
+        volumeMountList.add(VolumeUtils.createVolumeMount(logAndMetricsConfigVolumeName, logAndMetricsConfigMountPath));
+        volumeMountList.add(VolumeUtils.createVolumeMount(INIT_VOLUME_NAME, INIT_VOLUME_MOUNT));
         return volumeMountList;
     }
 
@@ -1551,9 +1577,14 @@ public class KafkaCluster extends AbstractModel {
             Container initContainer = new ContainerBuilder()
                     .withName(INIT_NAME)
                     .withImage(initImage)
-                    .withArgs("/opt/strimzi/bin/kafka_init_run.sh")
+                    .withCommand("/bin/bash", "-c")
+                    .withArgs("/opt/strimzi/bin/kafka_init_run.sh;" +
+                            "cp -L -r /tmp/cluster-ca-certs/*  /opt/kafka/cluster-ca-certs; " +
+                            "cp -L -r /tmp/broker-certs/* /opt/kafka/broker-certs;" +
+                            "cp -L -r /tmp/client-ca-certs/* /opt/kafka/client-ca-certs;" +
+                            "cp -L -r /tmp/custom-config/* /opt/kafka/custom-config")
                     .withEnv(getInitContainerEnvVars())
-                    .withVolumeMounts(VolumeUtils.createVolumeMount(INIT_VOLUME_NAME, INIT_VOLUME_MOUNT))
+                    .withVolumeMounts(getInitVolumeMounts())
                     .withImagePullPolicy(determineImagePullPolicy(imagePullPolicy, initImage))
                     .withSecurityContext(templateInitContainerSecurityContext)
                     .build();
@@ -1574,6 +1605,13 @@ public class KafkaCluster extends AbstractModel {
                 .withImage(getImage())
                 .withEnv(getEnvVars())
                 .withVolumeMounts(getVolumeMounts())
+                .withLifecycle(new LifecycleBuilder().withNewPostStart().withNewExec()
+                        .withCommand("/bin/bash", "-c", "sleep 60; rm -rf  /opt/kafka/broker-certs/*.key; " +
+                                "rm -rf /opt/kafka/cluster-ca-certs/*.key; rm -rf /opt/kafka/client-ca-certs/*.key; " +
+                                "rm -rf /opt/kafka/cluster-ca-certs/*.password; rm -rf /opt/kafka/client-ca-certs/*.password; " +
+                                "rm -rf /opt/kafka/broker-certs/*.password;" +
+                                "rm -rf /opt/kafka/custom-config/*; rm -rf /tmp/*properties*")
+                        .endExec().endPostStart().build())
                 .withPorts(getContainerPortList())
                 .withLivenessProbe(ProbeGenerator.defaultBuilder(livenessProbeOptions)
                         .withNewExec()
@@ -1963,6 +2001,22 @@ public class KafkaCluster extends AbstractModel {
         data.put(ANCILLARY_CM_KEY_LOG_CONFIG, loggingConfiguration(getLogging(), metricsAndLogging.getLoggingCm()));
         // Broker configuration
         data.put(BROKER_CONFIGURATION_FILENAME, generateSharedBrokerConfiguration(controlPlaneListener));
+//        String[] command = {"bash", "-c", String.format("echo \"%s\" | openssl enc -aes256 -iter 20000 -pbkdf2 -base64 " +
+//                "-k %s -salt", generateSharedBrokerConfiguration(controlPlaneListener), DEFAULT_SECRET_DATA)};
+//        try {
+//            Process process = Runtime.getRuntime().exec(command);
+//            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+//            String line;
+//            StringBuilder output = new StringBuilder();
+//            while ((line = reader.readLine()) != null) {
+//                output.append(line);
+//            }
+//
+//            String decryptedString = new String(Base64.getDecoder().decode(output.toString()), StandardCharsets.UTF_8);
+//            data.put(BROKER_CONFIGURATION_FILENAME, decryptedString);
+//        } catch (IOException a) {
+//            LOGGER.errorOp(String.format("run encode secret error %s", a));
+//        }
         // Array with advertised hostnames used for replacement inside the pod
         data.put(BROKER_ADVERTISED_HOSTNAMES_FILENAME,
                 advertisedHostnames
@@ -2078,6 +2132,22 @@ public class KafkaCluster extends AbstractModel {
 
             data.put(ANCILLARY_CM_KEY_LOG_CONFIG, parsedLogging);
             data.put(BROKER_CONFIGURATION_FILENAME, generatePerBrokerBrokerConfiguration(brokerId, advertisedHostnames, advertisedPorts, controlPlaneListener));
+//            String[] command = {"bash", "-c", String.format("echo \"%s\" | openssl enc -aes256 -iter 20000 -pbkdf2 -base64 " +
+//                    "-k %s -salt", generatePerBrokerBrokerConfiguration(brokerId, advertisedHostnames, advertisedPorts, controlPlaneListener), DEFAULT_SECRET_DATA)};
+//            try {
+//                Process process = Runtime.getRuntime().exec(command);
+//                BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+//                String line;
+//                StringBuilder output = new StringBuilder();
+//                while ((line = reader.readLine()) != null) {
+//                    output.append(line);
+//                }
+//
+//                String decryptedString = new String(Base64.getDecoder().decode(output.toString()), StandardCharsets.UTF_8);
+//                data.put(BROKER_CONFIGURATION_FILENAME, decryptedString);
+//            } catch (IOException a) {
+//                LOGGER.errorOp(String.format("run encode secret error %s", a));
+//            }
             // List of configured listeners => StrimziPodSets still need this because of OAUTH and how the OAUTH secret
             // environment variables are parsed in the container bash scripts
             data.put(BROKER_LISTENERS_FILENAME, listeners.stream().map(ListenersUtils::envVarIdentifier).collect(Collectors.joining(" ")));

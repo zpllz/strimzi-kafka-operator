@@ -239,6 +239,7 @@ public class OpenSslCertManager implements CertManager {
         Path newCertsDir = null;
         Path database = null;
         Path attr = null;
+
         try {
             tmpKey = Files.createTempFile(null, null);
             boolean keyInPkcs1;
@@ -270,7 +271,7 @@ public class OpenSslCertManager implements CertManager {
             newCertsDir = Files.createTempDirectory(null);
             defaultConfig = createDefaultConfig();
             OpensslArgs opt = new OpensslArgs("openssl", "ca")
-                    .opt("-utf8").opt("-sha256").opt("-batch").opt("-notext");
+                    .opt("-utf8").opt("-batch").opt("-notext").optArg("-md", "sha256");
             if (issuerCaCertFile == null) {
                 opt.opt("-selfsign");
                 opt.optArg("-keyfile", tmpKey);
@@ -294,7 +295,7 @@ public class OpenSslCertManager implements CertManager {
                 // If the key is in pkcs#1 format (bracketed by BEGIN/END RSA PRIVATE KEY)
                 // convert it to pkcs#8 format (bracketed by BEGIN/END PRIVATE KEY)
                 new OpensslArgs("openssl", "pkcs8")
-                        .opt("-topk8").opt("-nocrypt")
+                        .opt("-topk8").opt("-nocrypt").optArg("-iter", "20000")
                         .optArg("-in", tmpKey)
                         .optArg("-out", subjectKeyFile)
                         .exec();
@@ -364,6 +365,7 @@ public class OpenSslCertManager implements CertManager {
                 .optArg("-name", alias)
                 .optArg("-out", keyStoreFile)
                 .optArg("-passout", "pass:" + keyStorePassword)
+                //.optArg("-maciter", "20000")
                 .optArg("-certpbe", "aes-128-cbc")
                 .optArg("-keypbe", "aes-128-cbc")
                 .optArg("-macalg", "sha256")
@@ -446,13 +448,14 @@ public class OpenSslCertManager implements CertManager {
         Path attr = null;
         Path newCertsDir = null;
         Path sna = null;
+
         try {
             defaultConfig = createDefaultConfig();
             database = Files.createTempFile(null, null);
             attr = Files.createFile(new File(database.toString() + ".attr").toPath());
             newCertsDir = Files.createTempDirectory(null);
             OpensslArgs cmd = new OpensslArgs("openssl", "ca")
-                    .opt("-utf8").opt("-sha256").opt("-batch").opt("-notext")
+                    .opt("-utf8").opt("-batch").opt("-notext").optArg("-md", "sha256")
                     .optArg("-in", csrFile)
                     .optArg("-out", crtFile)
                     .optArg("-cert", caCert)

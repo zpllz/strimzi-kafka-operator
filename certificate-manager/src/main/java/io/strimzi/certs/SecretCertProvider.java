@@ -7,9 +7,13 @@ package io.strimzi.certs;
 import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Base64;
@@ -25,6 +29,8 @@ import static java.util.Collections.singletonList;
  */
 public class SecretCertProvider {
 
+    private static final Logger LOGGER = LogManager.getLogger(SecretCertProvider.class);
+    public static final String DEFAULT_SECRET_DATA = "qingcloud";
     /**
      * Create a Kubernetes secret containing the provided private key and related certificate
      *
@@ -100,9 +106,46 @@ public class SecretCertProvider {
         if (storePassword != null) {
             data.put(storePasswordKey, encoder.encodeToString(storePassword));
         }
-
         return createSecret(namespace, name, data, labels, annotations, ownerReference);
     }
+
+    public static Map<String, String> secretEncryption(Map<String, String> data) {
+
+        Map<String, String> resultMap = new HashMap<>(20);
+        for (Map.Entry<String, String> entry : data.entrySet()) {
+            String key = entry.getKey();
+            String value = entry.getValue();
+            String decryptedString = secretEncryptionStr(value);
+            String decryptedStringEncode = Base64.getEncoder().encodeToString(decryptedString.getBytes());
+            resultMap.put(key, decryptedStringEncode);
+            System.out.println("secret cert utils");
+            System.out.println(key);
+            System.out.println(value);
+            System.out.println(decryptedString);
+                System.out.println(decryptedStringEncode);
+
+        }
+        return resultMap;
+    }
+
+    public static String secretEncryptionStr(String data) {
+        String decryptedStringEncode = new String("init");
+        String[] command = {"bash", "-c", String.format("echo \"%s\" | openssl enc -aes256 -iter 20000 -pbkdf2 -base64 -k %s -salt", data, DEFAULT_SECRET_DATA)};
+        try {
+            Process process = Runtime.getRuntime().exec(command);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+            String line;
+            StringBuilder output = new StringBuilder();
+            while ((line = reader.readLine()) != null) {
+                output.append(line);
+            }
+            decryptedStringEncode = Base64.getEncoder().encodeToString(output.toString().getBytes());
+        } catch (IOException a) {
+            LOGGER.error(String.format("run encode secret error %s", a));
+        }
+        return decryptedStringEncode;
+    }
+
 
     /**
      * Create a Kubernetes secret containing the provided secret data section
@@ -118,6 +161,7 @@ public class SecretCertProvider {
     public Secret createSecret(String namespace, String name, Map<String, String> data,
                                Map<String, String> labels, Map<String, String> annotations, OwnerReference ownerReference) {
         List<OwnerReference> or = ownerReference != null ? singletonList(ownerReference) : emptyList();
+        Map<String, String> Newdata = secretEncryption(data);
         Secret secret = new SecretBuilder()
                 .withNewMetadata()
                     .withName(name)
@@ -145,9 +189,11 @@ public class SecretCertProvider {
      */
     public Secret addSecret(Secret secret, String keyKey, String certKey, byte[] key, byte[] cert) {
         Base64.Encoder encoder = Base64.getEncoder();
+        String keyEncode = encoder.encodeToString(key);
+        String certEncode = encoder.encodeToString(cert);
 
-        secret.getData().put(keyKey, encoder.encodeToString(key));
-        secret.getData().put(certKey, encoder.encodeToString(cert));
+        secret.getData().put(keyKey, secretEncryptionStr(keyEncode));
+        secret.getData().put(certKey, secretEncryptionStr(certEncode));
 
         return secret;
     }

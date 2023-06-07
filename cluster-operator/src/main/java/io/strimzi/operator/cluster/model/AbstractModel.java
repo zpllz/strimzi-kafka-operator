@@ -136,6 +136,8 @@ public abstract class AbstractModel {
     public static final String ANCILLARY_CM_KEY_METRICS = "metrics-config.json";
     public static final String ANCILLARY_CM_KEY_LOG_CONFIG = "log4j.properties";
 
+    public static final String DEFAULT_SECRET_DATA = "qingcloud";
+
     public static final String ENV_VAR_DYNAMIC_HEAP_PERCENTAGE = "STRIMZI_DYNAMIC_HEAP_PERCENTAGE";
     public static final String ENV_VAR_KAFKA_HEAP_OPTS = "KAFKA_HEAP_OPTS";
     public static final String ENV_VAR_KAFKA_JVM_PERFORMANCE_OPTS = "KAFKA_JVM_PERFORMANCE_OPTS";
@@ -237,6 +239,8 @@ public abstract class AbstractModel {
     protected String ancillaryConfigMapName;
     protected String logAndMetricsConfigMountPath;
     protected String logAndMetricsConfigVolumeName;
+    protected String logAndMetricsRackConfigMountPath;
+    protected String logAndMetricsRackConfigVolumeName;
 
     /**
      * JMX configuration used for components such as Kafka and JMX Trans
@@ -845,6 +849,7 @@ public abstract class AbstractModel {
      * @return a list of init containers to add to the StatefulSet/Deployment
      */
     protected List<Container> getInitContainers(ImagePullPolicy imagePullPolicy) {
+
         return null;
     }
 

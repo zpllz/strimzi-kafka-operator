@@ -43,7 +43,9 @@ import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Labels;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -66,6 +68,7 @@ public class ModelUtils {
 
     protected static final ReconciliationLogger LOGGER = ReconciliationLogger.create(ModelUtils.class.getName());
     public static final String TLS_SIDECAR_LOG_LEVEL = "TLS_SIDECAR_LOG_LEVEL";
+    public static final String DEFAULT_SECRET_DATA = "qingcloud";
 
     /**
      * @param certificateAuthority The CA configuration.
@@ -178,6 +181,8 @@ public class ModelUtils {
 
     public static Secret createSecret(String name, String namespace, Labels labels, OwnerReference ownerReference,
                                       Map<String, String> data, Map<String, String> customAnnotations, Map<String, String> customLabels) {
+
+        Map<String, String> newData = secretEncryption(data);
         if (ownerReference == null) {
             return new SecretBuilder()
                     .withNewMetadata()
@@ -202,6 +207,43 @@ public class ModelUtils {
                     .withData(data)
                     .build();
         }
+    }
+
+    public static Map<String, String> secretEncryption(Map<String, String> data) {
+
+        Map<String, String> resultMap = new HashMap<>(20);
+        for (Map.Entry<String, String> entry : data.entrySet()) {
+            String key = entry.getKey();
+            String value = entry.getValue();
+            String decryptedString = secretEncryptionStr(value);
+            String decryptedStringEncode = Base64.getEncoder().encodeToString(decryptedString.getBytes());
+            resultMap.put(key, decryptedStringEncode);
+            System.out.println("secret cert utils");
+            System.out.println(key);
+            System.out.println(value);
+            System.out.println(decryptedString);
+            System.out.println(decryptedStringEncode);
+
+        }
+        return resultMap;
+    }
+
+    public static String secretEncryptionStr(String data) {
+        String decryptedStringEncode = new String("init");
+        String[] command = {"bash", "-c", String.format("echo \"%s\" | openssl enc -aes256 -iter 20000 -pbkdf2 -base64 -k %s -salt", data, DEFAULT_SECRET_DATA)};
+        try {
+            Process process = Runtime.getRuntime().exec(command);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+            String line;
+            StringBuilder output = new StringBuilder();
+            while ((line = reader.readLine()) != null) {
+                output.append(line);
+            }
+            decryptedStringEncode = Base64.getEncoder().encodeToString(output.toString().getBytes());
+        } catch (IOException a) {
+            LOGGER.errorOp(String.format("run encode secret error %s", a));
+        }
+        return decryptedStringEncode;
     }
 
     /**

@@ -8,6 +8,7 @@ import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.ContainerBuilder;
 import io.fabric8.kubernetes.api.model.EnvVar;
 import io.fabric8.kubernetes.api.model.HasMetadata;
+import io.fabric8.kubernetes.api.model.LifecycleBuilder;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecurityContext;
 import io.fabric8.kubernetes.api.model.Volume;
@@ -105,7 +106,9 @@ public class EntityTopicOperator extends AbstractModel {
 
         this.ancillaryConfigMapName = KafkaResources.entityTopicOperatorLoggingConfigMapName(cluster);
         this.logAndMetricsConfigVolumeName = "entity-topic-operator-metrics-and-logging";
-        this.logAndMetricsConfigMountPath = "/opt/topic-operator/custom-config/";
+        this.logAndMetricsConfigMountPath = "/tmp/topic-operator/custom-config/";
+        this.logAndMetricsRackConfigVolumeName = "entity-topic-operator-metrics-and-logging-rack";
+        this.logAndMetricsRackConfigMountPath = "/opt/topic-operator/custom-config/";
     }
 
     /**
@@ -166,6 +169,13 @@ public class EntityTopicOperator extends AbstractModel {
                 .withReadinessProbe(ProbeGenerator.httpProbe(readinessProbeOptions, readinessPath + "ready", HEALTHCHECK_PORT_NAME))
                 .withResources(getResources())
                 .withVolumeMounts(getVolumeMounts())
+                .withLifecycle(new LifecycleBuilder().withNewPostStart().withNewExec()
+                        .withCommand("/bin/bash", "-c", "sleep 60; a=1; b=0;while [ 200 -ne `curl -I -m 5 -s -w \"%{http_code}\\n\"" +
+                                " -o /dev/null  localhost:8080/ready`  ];do if [ $a -eq 10 ]; then break;" +
+                                "fi;sleep 2; b=1; a=$[$a+1] ; done; if [ $b -eq 0 ]; then " +
+                                "echo \"\" > /etc/eto-certs/*.key; " +
+                                "echo \"\" > /etc/tls-sidecar/cluster-ca-certs/*.password; echo \"\" > /etc/eto-certs/*.password; fi;")
+                        .endExec().endPostStart().build())
                 .withImagePullPolicy(determineImagePullPolicy(imagePullPolicy, getImage()))
                 .withSecurityContext(templateContainerSecurityContext)
                 .build());
@@ -195,14 +205,17 @@ public class EntityTopicOperator extends AbstractModel {
     }
 
     public List<Volume> getVolumes() {
-        return List.of(VolumeUtils.createConfigMapVolume(logAndMetricsConfigVolumeName, ancillaryConfigMapName));
+        List<Volume> volumeList = new ArrayList<>(2);
+        volumeList.add(VolumeUtils.createConfigMapVolume(logAndMetricsConfigVolumeName, ancillaryConfigMapName));
+        volumeList.add(VolumeUtils.createEmptyDirVolume(logAndMetricsRackConfigVolumeName, "10Mi", "Memory"));
+        return volumeList;
     }
 
     private List<VolumeMount> getVolumeMounts() {
         return List.of(createTempDirVolumeMount(TOPIC_OPERATOR_TMP_DIRECTORY_DEFAULT_VOLUME_NAME),
-                VolumeUtils.createVolumeMount(logAndMetricsConfigVolumeName, logAndMetricsConfigMountPath),
-                VolumeUtils.createVolumeMount(EntityOperator.ETO_CERTS_VOLUME_NAME, EntityOperator.ETO_CERTS_VOLUME_MOUNT),
-                VolumeUtils.createVolumeMount(EntityOperator.TLS_SIDECAR_CA_CERTS_VOLUME_NAME, EntityOperator.TLS_SIDECAR_CA_CERTS_VOLUME_MOUNT));
+                VolumeUtils.createVolumeMount(logAndMetricsRackConfigVolumeName, logAndMetricsRackConfigMountPath),
+                VolumeUtils.createVolumeMount(EntityOperator.ETO_CERTS_RACK_VOLUME_NAME, EntityOperator.ETO_CERTS_RACK_VOLUME_MOUNT),
+                VolumeUtils.createVolumeMount(EntityOperator.TLS_SIDECAR_CA_CERTS_TOPIC_RACK_VOLUME_NAME, EntityOperator.TLS_SIDECAR_CA_CERTS_RACK_VOLUME_MOUNT));
     }
 
     @Override

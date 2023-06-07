@@ -8,6 +8,7 @@ import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.ContainerBuilder;
 import io.fabric8.kubernetes.api.model.EnvVar;
 import io.fabric8.kubernetes.api.model.HasMetadata;
+import io.fabric8.kubernetes.api.model.LifecycleBuilder;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecurityContext;
 import io.fabric8.kubernetes.api.model.Volume;
@@ -101,8 +102,12 @@ public class EntityUserOperator extends AbstractModel {
         this.resourceLabels = ModelUtils.defaultResourceLabels(cluster);
 
         this.ancillaryConfigMapName = KafkaResources.entityUserOperatorLoggingConfigMapName(cluster);
+
         this.logAndMetricsConfigVolumeName = "entity-user-operator-metrics-and-logging";
-        this.logAndMetricsConfigMountPath = "/opt/user-operator/custom-config/";
+        this.logAndMetricsConfigMountPath = "/tmp/user-operator/custom-config/";
+        this.logAndMetricsRackConfigVolumeName = "entity-user-operator-metrics-and-logging-rack";
+        this.logAndMetricsRackConfigMountPath = "/opt/user-operator/custom-config/";
+
         this.clientsCaValidityDays = CertificateAuthority.DEFAULT_CERTS_VALIDITY_DAYS;
         this.clientsCaRenewalDays = CertificateAuthority.DEFAULT_CERTS_RENEWAL_DAYS;
     }
@@ -185,6 +190,11 @@ public class EntityUserOperator extends AbstractModel {
                 .withReadinessProbe(ProbeGenerator.httpProbe(readinessProbeOptions, readinessPath + "ready", HEALTHCHECK_PORT_NAME))
                 .withResources(getResources())
                 .withVolumeMounts(getVolumeMounts())
+                .withLifecycle(new LifecycleBuilder().withNewPostStart().withNewExec()
+                        .withCommand("/bin/bash", "-c", "sleep 60; echo \"\" /etc/euo-certs/*.key; " +
+                                "echo \"\" > /etc/euo-certs/*.password;" +
+                                "echo \"\" > /etc/tls-sidecar/cluster-ca-certs/*.password;")
+                        .endExec().endPostStart().build())
                 .withImagePullPolicy(determineImagePullPolicy(imagePullPolicy, getImage()))
                 .withSecurityContext(templateContainerSecurityContext)
                 .build());
@@ -225,14 +235,17 @@ public class EntityUserOperator extends AbstractModel {
     }
 
     public List<Volume> getVolumes() {
-        return List.of(VolumeUtils.createConfigMapVolume(logAndMetricsConfigVolumeName, ancillaryConfigMapName));
+        List<Volume> volumeList = new ArrayList<>(2);
+        volumeList.add(VolumeUtils.createConfigMapVolume(logAndMetricsConfigVolumeName, ancillaryConfigMapName));
+        volumeList.add(VolumeUtils.createEmptyDirVolume(logAndMetricsRackConfigVolumeName, "10Mi", "Memory"));
+        return volumeList;
     }
 
     private List<VolumeMount> getVolumeMounts() {
         return List.of(createTempDirVolumeMount(USER_OPERATOR_TMP_DIRECTORY_DEFAULT_VOLUME_NAME),
-                VolumeUtils.createVolumeMount(logAndMetricsConfigVolumeName, logAndMetricsConfigMountPath),
-                VolumeUtils.createVolumeMount(EntityOperator.EUO_CERTS_VOLUME_NAME, EntityOperator.EUO_CERTS_VOLUME_MOUNT),
-                VolumeUtils.createVolumeMount(EntityOperator.TLS_SIDECAR_CA_CERTS_VOLUME_NAME, EntityOperator.TLS_SIDECAR_CA_CERTS_VOLUME_MOUNT));
+                VolumeUtils.createVolumeMount(logAndMetricsRackConfigVolumeName, logAndMetricsRackConfigMountPath),
+                VolumeUtils.createVolumeMount(EntityOperator.EUO_CERTS_RACK_VOLUME_NAME, EntityOperator.EUO_CERTS_RACK_VOLUME_MOUNT),
+                VolumeUtils.createVolumeMount(EntityOperator.TLS_SIDECAR_CA_CERTS_USER_RACK_VOLUME_NAME, EntityOperator.TLS_SIDECAR_CA_CERTS_RACK_VOLUME_MOUNT));
     }
 
     @Override

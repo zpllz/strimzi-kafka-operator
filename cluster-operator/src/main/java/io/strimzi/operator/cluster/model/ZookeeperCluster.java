@@ -12,6 +12,7 @@ import io.fabric8.kubernetes.api.model.EnvVar;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.IntOrString;
 import io.fabric8.kubernetes.api.model.LabelSelector;
+import io.fabric8.kubernetes.api.model.LifecycleBuilder;
 import io.fabric8.kubernetes.api.model.LocalObjectReference;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.Secret;
@@ -70,9 +71,13 @@ public class ZookeeperCluster extends AbstractModel {
 
     public static final String ZOOKEEPER_NAME = "zookeeper";
     protected static final String ZOOKEEPER_NODE_CERTIFICATES_VOLUME_NAME = "zookeeper-nodes";
-    protected static final String ZOOKEEPER_NODE_CERTIFICATES_VOLUME_MOUNT = "/opt/kafka/zookeeper-node-certs/";
+    protected static final String ZOOKEEPER_NODE_CERTIFICATES_VOLUME_MOUNT = "/tmp/zookeeper-node-certs/";
+    protected static final String ZOOKEEPER_NODE_CERTIFICATES_RACK_VOLUME_NAME = "zookeeper-nodes-rack";
+    protected static final String ZOOKEEPER_NODE_CERTIFICATES_RACK_VOLUME_MOUNT = "/opt/kafka/zookeeper-node-certs/";
     protected static final String ZOOKEEPER_CLUSTER_CA_VOLUME_NAME = "cluster-ca-certs";
-    protected static final String ZOOKEEPER_CLUSTER_CA_VOLUME_MOUNT = "/opt/kafka/cluster-ca-certs/";
+    protected static final String ZOOKEEPER_CLUSTER_CA_VOLUME_MOUNT = "/tmp/cluster-ca-certs/";
+    protected static final String ZOOKEEPER_CLUSTER_CA_RACK_VOLUME_NAME = "cluster-ca-certs-rack";
+    protected static final String ZOOKEEPER_CLUSTER_CA_RACK_VOLUME_MOUNT = "/opt/kafka/cluster-ca-certs/";
 
     // Env vars for JMX service
     protected static final String ENV_VAR_ZOOKEEPER_JMX_ENABLED = "ZOOKEEPER_JMX_ENABLED";
@@ -139,7 +144,9 @@ public class ZookeeperCluster extends AbstractModel {
         this.mountPath = "/var/lib/zookeeper";
 
         this.logAndMetricsConfigVolumeName = "zookeeper-metrics-and-logging";
-        this.logAndMetricsConfigMountPath = "/opt/kafka/custom-config/";
+        this.logAndMetricsConfigMountPath = "/tmp/custom-config/";
+        this.logAndMetricsRackConfigVolumeName = "zookeeper-metrics-and-logging-rack";
+        this.logAndMetricsRackConfigMountPath = "/opt/kafka/custom-config/";
     }
 
     public static ZookeeperCluster fromCrd(Reconciliation reconciliation, Kafka kafkaAssembly, KafkaVersion.Lookup versions) {
@@ -488,17 +495,53 @@ public class ZookeeperCluster extends AbstractModel {
                 Collections.singletonMap(clusterCa.caCertGenerationAnnotation(), String.valueOf(clusterCa.certGeneration())));
     }
 
+    protected List<Container> getInitContainers(ImagePullPolicy imagePullPolicy) {
+
+        List<Container> initContainers = new ArrayList<>(1);
+
+        Container initContainer = new ContainerBuilder()
+                .withName("zookeeper-init")
+                .withImage(getImage())
+                .withCommand("/bin/bash", "-c")
+                .withArgs("for i in `ls /tmp/zookeeper-node-certs/`;do cp -L  /tmp/zookeeper-node-certs/$i  /opt/kafka/zookeeper-node-certs/$i.encrypt;" +
+                        "echo >> /opt/kafka/zookeeper-node-certs/$i.encrypt;done; for i in `ls /tmp/cluster-ca-certs/`;" +
+                        "do cp -L /tmp/cluster-ca-certs/$i /opt/kafka/cluster-ca-certs/$i.encrypt;" +
+                        "echo >> /opt/kafka/cluster-ca-certs/$i.encrypt;done; for i in `ls /tmp/custom-config/`;" +
+                        "do cp -L  /tmp/custom-config/$i  /opt/kafka/custom-config/$i  ;done")
+                .withVolumeMounts(getInitVolumeMounts())
+                .withImagePullPolicy(determineImagePullPolicy(imagePullPolicy, getImage()))
+                .build();
+
+        if (getResources() != null) {
+            initContainer.setResources(getResources());
+        }
+        initContainers.add(initContainer);
+
+
+        return initContainers;
+    }
+
+
     @Override
     protected List<Container> getContainers(ImagePullPolicy imagePullPolicy) {
-
         List<Container> containers = new ArrayList<>(1);
 
         Container container = new ContainerBuilder()
                 .withName(ZOOKEEPER_NAME)
                 .withImage(getImage())
-                .withCommand("/opt/kafka/zookeeper_run.sh")
+                .withCommand("/bin/bash", "-c")
+                .withArgs("for i in `ls /opt/kafka/zookeeper-node-certs/ | grep \".encrypt\"`; do decrypt" +
+                        " /opt/kafka/zookeeper-node-certs/$i /opt/kafka/zookeeper-node-certs/${i%.encrypt*};done;" +
+                        " for i in  `ls /opt/kafka/cluster-ca-certs/ | grep \".encrypt\"`;do decrypt  " +
+                        "/opt/kafka/cluster-ca-certs/$i /opt/kafka/cluster-ca-certs/${i%.encrypt*};done;" +
+                        "/opt/kafka/zookeeper_run.sh")
                 .withEnv(getEnvVars())
                 .withVolumeMounts(getVolumeMounts())
+                .withLifecycle(new LifecycleBuilder().withNewPostStart().withNewExec()
+                        .withCommand("/bin/bash", "-c", "sleep 60; rm -rf  /opt/kafka/custom-config/*; " +
+                                "rm -rf /opt/kafka/zookeeper-node-certs/*.key; rm -rf /opt/kafka/cluster-ca-certs/*.key; " +
+                                "rm -rf  /opt/kafka/cluster-ca-certs/*.password; rm -rf /opt/kafka/zookeeper-node-certs/*.password;" +
+                                "rm -rf /tmp/*properties*").endExec().endPostStart().build())
                 .withPorts(getContainerPortList())
                 .withLivenessProbe(ProbeGenerator.execProbe(livenessProbeOptions, Collections.singletonList(livenessPath)))
                 .withReadinessProbe(ProbeGenerator.execProbe(readinessProbeOptions, Collections.singletonList(readinessPath)))
@@ -583,6 +626,10 @@ public class ZookeeperCluster extends AbstractModel {
         volumeList.add(VolumeUtils.createSecretVolume(ZOOKEEPER_NODE_CERTIFICATES_VOLUME_NAME, KafkaResources.zookeeperSecretName(cluster), isOpenShift));
         volumeList.add(VolumeUtils.createSecretVolume(ZOOKEEPER_CLUSTER_CA_VOLUME_NAME, AbstractModel.clusterCaCertSecretName(cluster), isOpenShift));
 
+        volumeList.add(VolumeUtils.createEmptyDirVolume(ZOOKEEPER_NODE_CERTIFICATES_RACK_VOLUME_NAME, "2Mi", "Memory"));
+        volumeList.add(VolumeUtils.createEmptyDirVolume(ZOOKEEPER_CLUSTER_CA_RACK_VOLUME_NAME, "2Mi", "Memory"));
+        volumeList.add(VolumeUtils.createEmptyDirVolume(logAndMetricsRackConfigVolumeName, "10Mi", "Memory"));
+
         return volumeList;
     }
 
@@ -641,6 +688,21 @@ public class ZookeeperCluster extends AbstractModel {
         // ZooKeeper uses mount path which is different from the one used by Kafka.
         // As a result it cannot use VolumeUtils.getVolumeMounts and creates the volume mount directly
         volumeMountList.add(VolumeUtils.createVolumeMount(VOLUME_NAME, mountPath));
+        volumeMountList.add(VolumeUtils.createVolumeMount(logAndMetricsRackConfigVolumeName, logAndMetricsRackConfigMountPath));
+        volumeMountList.add(VolumeUtils.createVolumeMount(ZOOKEEPER_NODE_CERTIFICATES_RACK_VOLUME_NAME, ZOOKEEPER_NODE_CERTIFICATES_RACK_VOLUME_MOUNT));
+        volumeMountList.add(VolumeUtils.createVolumeMount(ZOOKEEPER_CLUSTER_CA_RACK_VOLUME_NAME, ZOOKEEPER_CLUSTER_CA_RACK_VOLUME_MOUNT));
+
+        return volumeMountList;
+    }
+
+    private List<VolumeMount> getInitVolumeMounts() {
+        List<VolumeMount> volumeMountList = new ArrayList<>(10);
+
+        // ZooKeeper uses mount path which is different from the one used by Kafka.
+        // As a result it cannot use VolumeUtils.getVolumeMounts and creates the volume mount directly
+        volumeMountList.add(VolumeUtils.createVolumeMount(logAndMetricsRackConfigVolumeName, logAndMetricsRackConfigMountPath));
+        volumeMountList.add(VolumeUtils.createVolumeMount(ZOOKEEPER_NODE_CERTIFICATES_RACK_VOLUME_NAME, ZOOKEEPER_NODE_CERTIFICATES_RACK_VOLUME_MOUNT));
+        volumeMountList.add(VolumeUtils.createVolumeMount(ZOOKEEPER_CLUSTER_CA_RACK_VOLUME_NAME, ZOOKEEPER_CLUSTER_CA_RACK_VOLUME_MOUNT));
         volumeMountList.add(VolumeUtils.createVolumeMount(logAndMetricsConfigVolumeName, logAndMetricsConfigMountPath));
         volumeMountList.add(VolumeUtils.createVolumeMount(ZOOKEEPER_NODE_CERTIFICATES_VOLUME_NAME, ZOOKEEPER_NODE_CERTIFICATES_VOLUME_MOUNT));
         volumeMountList.add(VolumeUtils.createVolumeMount(ZOOKEEPER_CLUSTER_CA_VOLUME_NAME, ZOOKEEPER_CLUSTER_CA_VOLUME_MOUNT));

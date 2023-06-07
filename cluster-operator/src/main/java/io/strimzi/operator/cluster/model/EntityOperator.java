@@ -13,8 +13,10 @@ import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.LifecycleBuilder;
 import io.fabric8.kubernetes.api.model.LocalObjectReference;
 import io.fabric8.kubernetes.api.model.SecurityContext;
+import io.fabric8.kubernetes.api.model.SecurityContextBuilder;
 import io.fabric8.kubernetes.api.model.ServiceAccount;
 import io.fabric8.kubernetes.api.model.Volume;
+import io.fabric8.kubernetes.api.model.VolumeMount;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.api.model.apps.DeploymentStrategy;
 import io.fabric8.kubernetes.api.model.apps.DeploymentStrategyBuilder;
@@ -55,14 +57,28 @@ public class EntityOperator extends AbstractModel {
     protected static final String APPLICATION_NAME = "entity-operator";
     // Certificates for the Entity Topic Operator
     protected static final String ETO_CERTS_VOLUME_NAME = "eto-certs";
-    protected static final String ETO_CERTS_VOLUME_MOUNT = "/etc/eto-certs/";
+    protected static final String ETO_CERTS_VOLUME_MOUNT = "/tmp/eto-certs/";
+    protected static final String ETO_CERTS_RACK_VOLUME_NAME = "eto-certs-rack";
+    protected static final String ETO_CERTS_RACK_VOLUME_MOUNT = "/etc/eto-certs/";
+    protected static final String ETO_CERTS_TLS_RACK_VOLUME_NAME = "eto-certs-tls-rack";
+    protected static final String ETO_CERTS_TLS_RACK_VOLUME_MOUNT = "/etc/eto-certs-tls/";
     // Certificates for the Entity User Operator
     protected static final String EUO_CERTS_VOLUME_NAME = "euo-certs";
-    protected static final String EUO_CERTS_VOLUME_MOUNT = "/etc/euo-certs/";
+    protected static final String EUO_CERTS_VOLUME_MOUNT = "/tmp/euo-certs/";
+    protected static final String EUO_CERTS_RACK_VOLUME_NAME = "euo-certs-rack";
+    protected static final String EUO_CERTS_RACK_VOLUME_MOUNT = "/etc/euo-certs/";
 
     protected static final String TLS_SIDECAR_NAME = "tls-sidecar";
     protected static final String TLS_SIDECAR_CA_CERTS_VOLUME_NAME = "cluster-ca-certs";
-    protected static final String TLS_SIDECAR_CA_CERTS_VOLUME_MOUNT = "/etc/tls-sidecar/cluster-ca-certs/";
+    protected static final String TLS_SIDECAR_CA_CERTS_VOLUME_MOUNT = "/tmp/cluster-ca-certs/";
+    protected static final String TLS_SIDECAR_CA_CERTS_TLS_RACK_VOLUME_NAME = "cluster-ca-certs-tls-rack";
+    protected static final String TLS_SIDECAR_CA_CERTS_TOPIC_RACK_VOLUME_NAME = "cluster-ca-certs-topic-rack";
+    protected static final String TLS_SIDECAR_CA_CERTS_USER_RACK_VOLUME_NAME = "cluster-ca-certs-user-rack";
+
+    protected static final String TLS_SIDECAR_CA_CERTS_TLS_RACK_VOLUME_MOUNT = "/etc/tls-sidecar/cluster-ca-certs-tls/";
+    protected static final String TLS_SIDECAR_CA_CERTS_TOPIC_RACK_VOLUME_MOUNT = "/etc/tls-sidecar/cluster-ca-certs-topic/";
+    protected static final String TLS_SIDECAR_CA_CERTS_USER_RACK_VOLUME_MOUNT = "/etc/tls-sidecar/cluster-ca-certs-user/";
+    protected static final String TLS_SIDECAR_CA_CERTS_RACK_VOLUME_MOUNT = "/etc/tls-sidecar/cluster-ca-certs/";
 
     // Volume name of the temporary volume used by the TLS sidecar container
     // Because the container shares the pod with other containers, it needs to have unique name
@@ -214,6 +230,68 @@ public class EntityOperator extends AbstractModel {
         );
     }
 
+    protected List<Container> getInitContainers(ImagePullPolicy imagePullPolicy) {
+
+        String tlsSidecarImage = this.tlsSidecarImage;
+        if (tlsSidecar != null && tlsSidecar.getImage() != null) {
+            tlsSidecarImage = tlsSidecar.getImage();
+        }
+
+        List<Container> initContainers = new ArrayList<>(1);
+
+        Container initContainer = new ContainerBuilder()
+                .withName("entity-init")
+                .withImage(tlsSidecarImage)
+                .withCommand("/bin/bash", "-c")
+                .withArgs("cp -L -r /tmp/user-operator/custom-config/*  /opt/user-operator/custom-config;" +
+                        "chmod 777  /opt/user-operator/custom-config/*;" +
+                        "cp -L -r /tmp/euo-certs/*  /etc/euo-certs/ ; " +
+                        "chmod 777   /etc/euo-certs/*;" +
+                        "cp -L -r /tmp/cluster-ca-certs/*  /etc/tls-sidecar/cluster-ca-certs-topic;" +
+                        "chmod 777  /etc/tls-sidecar/cluster-ca-certs-topic/*;" +
+                        "cp -L -r /tmp/cluster-ca-certs/* /etc/tls-sidecar/cluster-ca-certs-tls ;" +
+                        "chmod 777  /etc/tls-sidecar/cluster-ca-certs-tls/*;" +
+                        "cp -L -r /tmp/cluster-ca-certs/*  /etc/tls-sidecar/cluster-ca-certs-user;" +
+                        "chmod 777  /etc/tls-sidecar/cluster-ca-certs-user/*;" +
+                        "cp -L -r /tmp/topic-operator/custom-config/* /opt/topic-operator/custom-config/;" +
+                        "chmod 777  /opt/topic-operator/custom-config/*;" +
+                        "cp -L -r /tmp/eto-certs/* /etc/eto-certs/;  cp -L -r /tmp/eto-certs/*  /etc/eto-certs-tls/;" +
+                        "chmod 777  /etc/eto-certs/*; chmod 777  /etc/eto-certs-tls/*; ")
+                .withVolumeMounts(getInitVolumeMounts())
+                .withSecurityContext(new SecurityContextBuilder().withRunAsUser(0L).build())
+                .withImagePullPolicy(determineImagePullPolicy(imagePullPolicy, tlsSidecarImage))
+                .build();
+
+        if (getResources() != null) {
+            initContainer.setResources(getResources());
+        }
+        initContainers.add(initContainer);
+        return initContainers;
+    }
+
+    private List<VolumeMount> getInitVolumeMounts() {
+        List<VolumeMount> volumeMountList = new ArrayList<>(13);
+        if (topicOperator != null) {
+            volumeMountList.add(VolumeUtils.createVolumeMount(topicOperator.logAndMetricsConfigVolumeName, topicOperator.logAndMetricsConfigMountPath));
+            volumeMountList.add(VolumeUtils.createVolumeMount(topicOperator.logAndMetricsRackConfigVolumeName, topicOperator.logAndMetricsRackConfigMountPath));
+        }
+        if (userOperator != null) {
+            volumeMountList.add(VolumeUtils.createVolumeMount(userOperator.logAndMetricsConfigVolumeName, userOperator.logAndMetricsConfigMountPath));
+            volumeMountList.add(VolumeUtils.createVolumeMount(userOperator.logAndMetricsRackConfigVolumeName, userOperator.logAndMetricsRackConfigMountPath));
+        }
+
+        volumeMountList.add(VolumeUtils.createVolumeMount(ETO_CERTS_VOLUME_NAME, ETO_CERTS_VOLUME_MOUNT));
+        volumeMountList.add(VolumeUtils.createVolumeMount(ETO_CERTS_RACK_VOLUME_NAME, ETO_CERTS_RACK_VOLUME_MOUNT));
+        volumeMountList.add(VolumeUtils.createVolumeMount(ETO_CERTS_TLS_RACK_VOLUME_NAME, ETO_CERTS_TLS_RACK_VOLUME_MOUNT));
+        volumeMountList.add(VolumeUtils.createVolumeMount(EUO_CERTS_VOLUME_NAME, EUO_CERTS_VOLUME_MOUNT));
+        volumeMountList.add(VolumeUtils.createVolumeMount(EUO_CERTS_RACK_VOLUME_NAME, EUO_CERTS_RACK_VOLUME_MOUNT));
+        volumeMountList.add(VolumeUtils.createVolumeMount(TLS_SIDECAR_CA_CERTS_VOLUME_NAME, TLS_SIDECAR_CA_CERTS_VOLUME_MOUNT));
+        volumeMountList.add(VolumeUtils.createVolumeMount(TLS_SIDECAR_CA_CERTS_TLS_RACK_VOLUME_NAME, TLS_SIDECAR_CA_CERTS_TLS_RACK_VOLUME_MOUNT));
+        volumeMountList.add(VolumeUtils.createVolumeMount(TLS_SIDECAR_CA_CERTS_TOPIC_RACK_VOLUME_NAME, TLS_SIDECAR_CA_CERTS_TOPIC_RACK_VOLUME_MOUNT));
+        volumeMountList.add(VolumeUtils.createVolumeMount(TLS_SIDECAR_CA_CERTS_USER_RACK_VOLUME_NAME, TLS_SIDECAR_CA_CERTS_USER_RACK_VOLUME_MOUNT));
+        return volumeMountList;
+    }
+
     @Override
     protected List<Container> getContainers(ImagePullPolicy imagePullPolicy) {
         List<Container> containers = new ArrayList<>(3);
@@ -241,11 +319,15 @@ public class EntityOperator extends AbstractModel {
                     .withResources(tlsSidecar != null ? tlsSidecar.getResources() : null)
                     .withEnv(getTlsSidecarEnvVars())
                     .withVolumeMounts(createTempDirVolumeMount(TLS_SIDECAR_TMP_DIRECTORY_DEFAULT_VOLUME_NAME),
-                            VolumeUtils.createVolumeMount(ETO_CERTS_VOLUME_NAME, ETO_CERTS_VOLUME_MOUNT),
-                            VolumeUtils.createVolumeMount(TLS_SIDECAR_CA_CERTS_VOLUME_NAME, TLS_SIDECAR_CA_CERTS_VOLUME_MOUNT))
+                            VolumeUtils.createVolumeMount(ETO_CERTS_TLS_RACK_VOLUME_NAME, ETO_CERTS_RACK_VOLUME_MOUNT),
+                            VolumeUtils.createVolumeMount(TLS_SIDECAR_CA_CERTS_TLS_RACK_VOLUME_NAME, TLS_SIDECAR_CA_CERTS_RACK_VOLUME_MOUNT))
                     .withLifecycle(new LifecycleBuilder().withNewPreStop().withNewExec()
                             .withCommand("/opt/stunnel/entity_operator_stunnel_pre_stop.sh")
-                            .endExec().endPreStop().build())
+                            .endExec().endPreStop().withNewPostStart().withNewExec()
+                            .withCommand("/bin/bash", "-c", "sleep 60; echo \"\" /etc/eto-certs/*.key;" +
+                                    "echo \"\" > /etc/eto-certs/*.password;" +
+                                    "echo \"\" >/etc/tls-sidecar/cluster-ca-certs/*.password;")
+                            .endExec().endPostStart().build())
                     .withImagePullPolicy(determineImagePullPolicy(imagePullPolicy, tlsSidecarImage))
                     .withSecurityContext(templateTlsSidecarContainerSecurityContext)
                     .build();
@@ -269,22 +351,29 @@ public class EntityOperator extends AbstractModel {
     }
 
     private List<Volume> getVolumes(boolean isOpenShift) {
-        List<Volume> volumeList = new ArrayList<>(8);
+        List<Volume> volumeList = new ArrayList<>(16);
 
         if (topicOperator != null) {
             volumeList.addAll(topicOperator.getVolumes());
             volumeList.add(createTempDirVolume(TOPIC_OPERATOR_TMP_DIRECTORY_DEFAULT_VOLUME_NAME));
             volumeList.add(VolumeUtils.createSecretVolume(ETO_CERTS_VOLUME_NAME, KafkaResources.entityTopicOperatorSecretName(cluster), isOpenShift));
+            volumeList.add(VolumeUtils.createEmptyDirVolume(ETO_CERTS_RACK_VOLUME_NAME, "10Mi", "Memory"));
+            volumeList.add(VolumeUtils.createEmptyDirVolume(ETO_CERTS_TLS_RACK_VOLUME_NAME, "10Mi", "Memory"));
+            volumeList.add(VolumeUtils.createEmptyDirVolume(TLS_SIDECAR_CA_CERTS_TOPIC_RACK_VOLUME_NAME, "10Mi", "Memory"));
         }
 
         if (userOperator != null) {
             volumeList.addAll(userOperator.getVolumes());
             volumeList.add(createTempDirVolume(USER_OPERATOR_TMP_DIRECTORY_DEFAULT_VOLUME_NAME));
             volumeList.add(VolumeUtils.createSecretVolume(EUO_CERTS_VOLUME_NAME, KafkaResources.entityUserOperatorSecretName(cluster), isOpenShift));
+            volumeList.add(VolumeUtils.createEmptyDirVolume(EUO_CERTS_RACK_VOLUME_NAME, "10Mi", "Memory"));
+            volumeList.add(VolumeUtils.createEmptyDirVolume(TLS_SIDECAR_CA_CERTS_USER_RACK_VOLUME_NAME, "10Mi", "Memory"));
         }
+
 
         volumeList.add(createTempDirVolume(TLS_SIDECAR_TMP_DIRECTORY_DEFAULT_VOLUME_NAME));
         volumeList.add(VolumeUtils.createSecretVolume(TLS_SIDECAR_CA_CERTS_VOLUME_NAME, AbstractModel.clusterCaCertSecretName(cluster), isOpenShift));
+        volumeList.add(VolumeUtils.createEmptyDirVolume(TLS_SIDECAR_CA_CERTS_TLS_RACK_VOLUME_NAME, "10Mi", "Memory"));
         return volumeList;
     }
 
