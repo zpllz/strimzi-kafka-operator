@@ -4,16 +4,18 @@
  */
 package io.strimzi.operator.common.operator.resource;
 
-import io.fabric8.kubernetes.api.model.ConfigMap;
-import io.fabric8.kubernetes.api.model.ConfigMapList;
+import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 
+import java.util.Base64;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -58,6 +60,80 @@ public class ConfigMapOperator extends AbstractResourceOperator<KubernetesClient
             LOGGER.errorCr(reconciliation, "Caught exception while patching {} {} in namespace {}", resourceKind, name, namespace, e);
             return Future.failedFuture(e);
         }
+    }
+
+    @Override
+    public Future<ReconcileResult<ConfigMap>> reconcile(Reconciliation reconciliation, String namespace, String name, ConfigMap desired) {
+        if (desired != null && !namespace.equals(desired.getMetadata().getNamespace())) {
+            return Future.failedFuture("Given namespace " + namespace + " incompatible with desired namespace " + desired.getMetadata().getNamespace());
+        } else if (desired != null && !name.equals(desired.getMetadata().getName())) {
+            return Future.failedFuture("Given name " + name + " incompatible with desired name " + desired.getMetadata().getName());
+        }
+
+        Promise<ReconcileResult<ConfigMap>> promise = Promise.promise();
+        vertx.createSharedWorkerExecutor("kubernetes-ops-pool").executeBlocking(
+                future -> {
+                    ConfigMap current = operation().inNamespace(namespace).withName(name).get();
+                    if (desired != null) {
+                        ConfigMap desiredencryption = secretEncryption(desired);
+                        if (current == null) {
+                            LOGGER.debugCr(reconciliation, "{} {}/{} does not exist, creating it", resourceKind, namespace, name);
+                            internalCreate(reconciliation, namespace, name, desired).onComplete(future);
+                            internalCreate(reconciliation, namespace, name + "-encrypt", desiredencryption).onComplete(future);
+                        } else {
+                            LOGGER.debugCr(reconciliation, "{} {}/{} already exists, patching it", resourceKind, namespace, name);
+                            internalPatch(reconciliation, namespace, name, current, desired).onComplete(future);
+                            internalPatch(reconciliation, namespace, name + "-encrypt", current, desiredencryption).onComplete(future);
+                        }
+                    } else {
+                        if (current != null) {
+                            // Deletion is desired
+                            LOGGER.debugCr(reconciliation, "{} {}/{} exist, deleting it", resourceKind, namespace, name);
+                            internalDelete(reconciliation, namespace, name).onComplete(future);
+                            internalDelete(reconciliation, namespace, name + "-encrypt").onComplete(future);
+                        } else {
+                            LOGGER.debugCr(reconciliation, "{} {}/{} does not exist, noop", resourceKind, namespace, name);
+                            future.complete(ReconcileResult.noop(null));
+                        }
+                    }
+
+                },
+                false,
+                promise
+        );
+        return promise.future();
+    }
+
+    public static ConfigMap secretEncryption(ConfigMap configMap) {
+
+        ObjectMetaBuilder metadata = new ObjectMetaBuilder()
+                .withName(configMap.getMetadata().getName() + "-encrypt")
+                .withNamespace(configMap.getMetadata().getNamespace());
+
+        if (configMap.getMetadata().getOwnerReferences() != null ) {
+            metadata.withOwnerReferences(configMap.getMetadata().getOwnerReferences());
+        }
+        if (configMap.getMetadata().getLabels() != null ) {
+            metadata.withLabels(configMap.getMetadata().getLabels());
+        }
+        if (configMap.getMetadata().getAnnotations() != null ) {
+            metadata.withAnnotations(configMap.getMetadata().getAnnotations());
+        }
+
+        Map<String, String> resultMap = new HashMap<>();
+        for (Map.Entry<String, String> entry : configMap.getData().entrySet()) {
+            String key = entry.getKey();
+            String value = entry.getValue();
+            String decryptedString = secretEncryptionStr(value);
+            System.out.println("configmap encrypt code");
+            System.out.println(key);
+            System.out.println(value);
+            System.out.println(decryptedString);
+            resultMap.put(key, decryptedString);
+        }
+        return new ConfigMapBuilder()
+                .withMetadata(metadata.build())
+                .withData(resultMap).build();
     }
 
     private boolean compareObjects(Object a, Object b) {

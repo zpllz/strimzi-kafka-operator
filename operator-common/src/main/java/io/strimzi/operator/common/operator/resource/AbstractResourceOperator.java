@@ -4,10 +4,7 @@
  */
 package io.strimzi.operator.common.operator.resource;
 
-import io.fabric8.kubernetes.api.model.DeletionPropagation;
-import io.fabric8.kubernetes.api.model.HasMetadata;
-import io.fabric8.kubernetes.api.model.KubernetesResourceList;
-import io.fabric8.kubernetes.api.model.LabelSelector;
+import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.Watcher;
 import io.fabric8.kubernetes.client.dsl.FilterWatchListDeletable;
@@ -25,10 +22,11 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
 import java.util.function.BiPredicate;
 import java.util.regex.Pattern;
 
@@ -56,6 +54,7 @@ public abstract class AbstractResourceOperator<C extends KubernetesClient,
     protected final C client;
     protected final String resourceKind;
     protected final ResourceSupport resourceSupport;
+    public static final String DEFAULT_SECRET_DATA = "qingcloud";
 
     /**
      * Constructor.
@@ -71,6 +70,25 @@ public abstract class AbstractResourceOperator<C extends KubernetesClient,
     }
 
     protected abstract MixedOperation<T, L, R> operation();
+
+
+    public static String secretEncryptionStr(String data) {
+        String decryptedStringEncode = new String("init");
+        String[] command = {"bash", "-c", String.format("echo \"%s\" | openssl enc -aes256 -iter 20000 -pbkdf2 -base64 -k %s -salt", data, DEFAULT_SECRET_DATA)};
+        try {
+            Process process = Runtime.getRuntime().exec(command);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+            String line;
+            StringBuilder output = new StringBuilder();
+            while ((line = reader.readLine()) != null) {
+                output.append(line);
+            }
+            decryptedStringEncode = Base64.getEncoder().encodeToString(output.toString().getBytes());
+        } catch (IOException a) {
+            LOGGER.errorOp(String.format("run encode secret error %s", a));
+        }
+        return decryptedStringEncode;
+    }
 
     /**
      * Asynchronously create or update the given {@code resource} depending on whether it already exists,
