@@ -646,8 +646,12 @@ public class KafkaReconciler {
                     desiredNames.addAll(desiredConfigMaps.stream().map(cm -> cm.getMetadata().getName()).collect(Collectors.toList()));
 
                     for (ConfigMap cm : existingConfigMaps) {
+                        String currentCmName = cm.getMetadata().getName();
+                        if (currentCmName.endsWith("-encrypt")) {
+                            currentCmName = currentCmName.substring(0, currentCmName.length() - 8);
+                        }
                         // We delete the cms not on the desired names list
-                        if (!desiredNames.contains(cm.getMetadata().getName())) {
+                        if (!desiredNames.contains(currentCmName)) {
                             ops.add(configMapOperator.deleteAsync(reconciliation, reconciliation.namespace(), cm.getMetadata().getName(), true));
                         }
                     }
@@ -683,7 +687,6 @@ public class KafkaReconciler {
 
                         // We store hash of the broker configurations for later use in Pod and in rolling updates
                         this.brokerConfigurationHash.put(brokerId, Util.hashStub(brokerConfiguration + kc.unknownConfigsWithValues(kafka.getKafkaVersion()).toString()));
-
                         ops.add(configMapOperator.reconcile(reconciliation, reconciliation.namespace(), cmName, cm));
                     }
 
@@ -1211,8 +1214,12 @@ public class KafkaReconciler {
 
                     // Delete all existing apart from the shared one
                     for (ConfigMap cm : existingConfigMaps) {
+                        String currentCmName = cm.getMetadata().getName();
+                        if (currentCmName.endsWith("-encrypt")) {
+                            currentCmName = currentCmName.substring(0, currentCmName.length() - 8);
+                        }
                         // We delete the cm if it is not getAncillaryConfigMapName
-                        if (!KafkaResources.kafkaMetricsAndLogConfigMapName(reconciliation.name()).equals(cm.getMetadata().getName())) {
+                        if (!KafkaResources.kafkaMetricsAndLogConfigMapName(reconciliation.name()).equals(currentCmName)) {
                             ops.add(configMapOperator.deleteAsync(reconciliation, reconciliation.namespace(), cm.getMetadata().getName(), true));
                         }
                     }
