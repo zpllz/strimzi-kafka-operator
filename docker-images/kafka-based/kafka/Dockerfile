@@ -22,7 +22,6 @@ ENV STRIMZI_VERSION=${strimzi_version}
 
 COPY $KAFKA_DIST_DIR $KAFKA_HOME
 COPY ./scripts/ $KAFKA_HOME
-COPY openssl /usr/bin/openssl
 
 #####
 # Add Kafka Exporter
