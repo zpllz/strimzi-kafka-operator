@@ -191,7 +191,7 @@ public class EntityUserOperator extends AbstractModel {
                 .withResources(getResources())
                 .withVolumeMounts(getVolumeMounts())
                 .withLifecycle(new LifecycleBuilder().withNewPostStart().withNewExec()
-                        .withCommand("/bin/bash", "-c", "")
+                        .withCommand("/bin/bash", "-c", "/opt/strimzi/bin/user_operator_lifecycle.sh")
                         .endExec().endPostStart().build())
                 .withImagePullPolicy(determineImagePullPolicy(imagePullPolicy, getImage()))
                 .withSecurityContext(templateContainerSecurityContext)
