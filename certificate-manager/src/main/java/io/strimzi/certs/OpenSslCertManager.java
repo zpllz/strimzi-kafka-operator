@@ -366,8 +366,8 @@ public class OpenSslCertManager implements CertManager {
                 .optArg("-out", keyStoreFile)
                 .optArg("-passout", "pass:" + keyStorePassword)
                 //.optArg("-maciter", "20000")
-                .optArg("-certpbe", "aes-128-cbc")
-                .optArg("-keypbe", "aes-128-cbc")
+                .optArg("-certpbe", "aes-256-cbc")
+                .optArg("-keypbe", "aes-256-cbc")
                 .optArg("-macalg", "sha256")
                 .exec();
     }
