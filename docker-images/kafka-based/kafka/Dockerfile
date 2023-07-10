@@ -97,6 +97,10 @@ RUN microdnf remove nmap-ncat net-tools tar
 
 WORKDIR $KAFKA_HOME
 
+RUN echo "keystore.pkcs12.macIterationCount = 15000" >> /etc/java/java-11-openjdk/java-11-openjdk-11.0.19.0.7-4.el8.aarch64/conf/security/java.security
+RUN echo "keystore.pkcs12.keyPbeIterationCount = 15000" >> /etc/java/java-11-openjdk/java-11-openjdk-11.0.19.0.7-4.el8.aarch64/conf/security/java.security
+RUN echo "keystore.pkcs12.certPbeIterationCount = 15000" >> /etc/java/java-11-openjdk/java-11-openjdk-11.0.19.0.7-4.el8.aarch64/conf/security/java.security
+
 USER 1001
 FROM scratch
 
