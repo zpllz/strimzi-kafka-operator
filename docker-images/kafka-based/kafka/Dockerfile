@@ -6,8 +6,11 @@ ARG THIRD_PARTY_LIBS
 ARG strimzi_version
 ARG TARGETPLATFORM
 
-RUN microdnf install gettext nmap-ncat stunnel net-tools unzip hostname findutils tar \
-    && microdnf clean all
+#RUN microdnf install gettext nmap-ncat stunnel net-tools unzip hostname findutils tar \
+#    && microdnf clean all
+
+    RUN apt install gettext stunnel4 unzip hostname findutils tar -y \
+    && apt clean all
 
 # Add kafka user with UID 1001
 # The user is in the group 0 to have access to the mounted volumes and storage
@@ -92,8 +95,8 @@ COPY ./cruise-control-scripts $CRUISE_CONTROL_HOME
 ENV STUNNEL_HOME=/opt/stunnel
 RUN mkdir $STUNNEL_HOME && mkdir -p -m g+rw /usr/local/var/run/
 COPY ./stunnel-scripts/ $STUNNEL_HOME
-## delete 
-RUN microdnf remove nmap-ncat net-tools tar
+### delete
+#RUN microdnf remove nmap-ncat net-tools tar
 
 WORKDIR $KAFKA_HOME
 

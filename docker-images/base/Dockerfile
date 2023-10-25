@@ -4,9 +4,12 @@ ARG TARGETPLATFORM
 
 USER root
 
-RUN microdnf update \
-    && microdnf --setopt=install_weak_deps=0 --setopt=tsflags=nodocs install java-${JAVA_VERSION}-openjdk-headless openssl shadow-utils \
-    && microdnf clean all
+#RUN microdnf update \
+#    && microdnf --setopt=install_weak_deps=0 --setopt=tsflags=nodocs install java-${JAVA_VERSION}-openjdk-headless openssl shadow-utils \
+#    && microdnf clean all
+RUN apt update \
+    && apt install openjdk-${JAVA_VERSION}-jdk openssl tini -y \
+    && apt clean all
 
 ENV JAVA_HOME /usr/lib/jvm/jre-11
 
@@ -21,29 +24,29 @@ ENV TINI_SHA256_S390X=931b70a182af879ca249ae9de87ef68423121b38d235c78997fafc680c
 
 RUN echo $TARGETPLATFORM
 
-RUN set -ex; \
-    if [[ ${TARGETPLATFORM} = "linux/ppc64le" ]]; then \
-        curl -s -L https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-ppc64le -o /usr/bin/tini; \
-        echo "${TINI_SHA256_PPC64LE} */usr/bin/tini" | sha256sum -c; \
-        chmod +x /usr/bin/tini; \
-    elif [[ ${TARGETPLATFORM} = "linux/arm64" ]]; then \
-        curl -s -L https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-arm64 -o /usr/bin/tini; \
-        echo "${TINI_SHA256_ARM64} */usr/bin/tini" | sha256sum -c; \
-        chmod +x /usr/bin/tini; \
-    elif [[ ${TARGETPLATFORM} = "linux/s390x" ]]; then \
-        curl -s -L https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-s390x -o /usr/bin/tini; \
-        echo "${TINI_SHA256_S390X} */usr/bin/tini" | sha256sum -c; \
-        chmod +x /usr/bin/tini; \
-    else \
-        curl -s -L https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini -o /usr/bin/tini; \
-        echo "${TINI_SHA256_AMD64} */usr/bin/tini" | sha256sum -c; \
-        chmod +x /usr/bin/tini; \
-    fi
+#RUN set -ex; \
+#    if [[ ${TARGETPLATFORM} = "linux/ppc64le" ]]; then \
+#        curl -s -L https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-ppc64le -o /usr/bin/tini; \
+#        echo "${TINI_SHA256_PPC64LE} */usr/bin/tini" | sha256sum -c; \
+#        chmod +x /usr/bin/tini; \
+#    elif [[ ${TARGETPLATFORM} = "linux/arm64" ]]; then \
+#        curl -s -L https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-arm64 -o /usr/bin/tini; \
+#        echo "${TINI_SHA256_ARM64} */usr/bin/tini" | sha256sum -c; \
+#        chmod +x /usr/bin/tini; \
+#    elif [[ ${TARGETPLATFORM} = "linux/s390x" ]]; then \
+#        curl -s -L https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-s390x -o /usr/bin/tini; \
+#        echo "${TINI_SHA256_S390X} */usr/bin/tini" | sha256sum -c; \
+#        chmod +x /usr/bin/tini; \
+#    else \
+#        curl -s -L https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini -o /usr/bin/tini; \
+#        echo "${TINI_SHA256_AMD64} */usr/bin/tini" | sha256sum -c; \
+#        chmod +x /usr/bin/tini; \
+#    fi
 #RUN rm -f /usr/bin/id /usr/bin/gdbm_dump /usr/bin/gdbm_load /usr/bin/gdbmtool /usr/bin/lua /usr/bin/luac 
-RUN rm -rf /usr/bin/id /usr/share/gdb
-RUN rpm -e --nodeps gdbm-1.18-2.el8.aarch64 lua-5.3.4-12.el8.aarch64
-COPY openssl /usr/bin/openssl
-RUN chmod +x /usr/bin/openssl
+#RUN rm -rf /usr/bin/id /usr/share/gdb
+#RUN rpm -e --nodeps gdbm-1.18-2.el8.aarch64 lua-5.3.4-12.el8.aarch64
+#COPY openssl /usr/bin/openssl
+#RUN chmod +x /usr/bin/openssl
 COPY decrypt /usr/bin/decrypt
 RUN chmod +x /usr/bin/decrypt
 
