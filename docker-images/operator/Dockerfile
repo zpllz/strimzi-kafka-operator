@@ -1,4 +1,8 @@
 FROM dockerhub.qingcloud.com/kafka_arm/base as base
+ENV PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/jvm/java-17-openjdk-arm64/bin:/opt/openssl/bin
+ENV LD_LIBRARY_PATH /opt/openssl/lib/
+ENV OPENSSL_CONF /opt/openssl/ssl/openssl.cnf
+SHELL ["/bin/bash", "-c"]
 
 # Add strimzi user with UID 1001
 # The user is in the group 0 to have access to the mounted volumes and storage
@@ -14,15 +18,14 @@ COPY scripts/ tmp/bin/ bin/
 
 COPY tmp/lib/ lib/
 
-RUN echo "keystore.pkcs12.macIterationCount = 15000" >> /etc/java/java-11-openjdk/java-11-openjdk-11.0.19.0.7-4.el8.aarch64/conf/security/java.security
-RUN echo "keystore.pkcs12.keyPbeIterationCount = 15000" >> /etc/java/java-11-openjdk/java-11-openjdk-11.0.19.0.7-4.el8.aarch64/conf/security/java.security
-RUN echo "keystore.pkcs12.certPbeIterationCount = 15000" >> /etc/java/java-11-openjdk/java-11-openjdk-11.0.19.0.7-4.el8.aarch64/conf/security/java.security
-
 USER 1001
 
 FROM scratch
 
 COPY --from=base / /
+ENV PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/jvm/java-17-openjdk-arm64/bin:/opt/openssl/bin
+ENV LD_LIBRARY_PATH /opt/openssl/lib/
+ENV OPENSSL_CONF /opt/openssl/ssl/openssl.cnf
 ARG strimzi_version=1.0-SNAPSHOT
 ENV STRIMZI_VERSION ${strimzi_version}
 ENV STRIMZI_HOME=/opt/strimzi
