@@ -1,4 +1,4 @@
-FROM strimzi/base:latest
+FROM dockerhub.qingcloud.com/kafka/base:latest
 
 LABEL org.opencontainers.image.source='https://github.com/strimzi/strimzi-kafka-operator'
 
