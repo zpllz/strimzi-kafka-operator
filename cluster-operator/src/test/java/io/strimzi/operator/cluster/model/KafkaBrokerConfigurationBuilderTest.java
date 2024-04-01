@@ -129,7 +129,7 @@ public class KafkaBrokerConfigurationBuilderTest {
 
     @ParallelTest
     public void testCruiseControl()  {
-        CruiseControlMetricsReporter ccMetricsReporter = new CruiseControlMetricsReporter("strimzi.cruisecontrol.metrics", 1, 1, 1);
+        CruiseControlMetricsReporter ccMetricsReporter = new CruiseControlMetricsReporter("__strimzi_cruisecontrol_metrics", 1, 1, 1);
 
         // Broker configuration
         String configuration = new KafkaBrokerConfigurationBuilder(Reconciliation.DUMMY_RECONCILIATION, "2", false)
@@ -138,7 +138,7 @@ public class KafkaBrokerConfigurationBuilderTest {
 
         assertThat(configuration, isEquivalent("broker.id=2",
                 "node.id=2",
-                CruiseControlConfigurationParameters.METRICS_TOPIC_NAME + "=strimzi.cruisecontrol.metrics",
+                CruiseControlConfigurationParameters.METRICS_TOPIC_NAME + "=__strimzi_cruisecontrol_metrics",
                 CruiseControlConfigurationParameters.METRICS_REPORTER_SSL_ENDPOINT_ID_ALGO + "=HTTPS",
                 CruiseControlConfigurationParameters.METRICS_REPORTER_BOOTSTRAP_SERVERS + "=my-cluster-kafka-brokers:9091",
                 CruiseControlConfigurationParameters.METRICS_REPORTER_SECURITY_PROTOCOL + "=SSL",

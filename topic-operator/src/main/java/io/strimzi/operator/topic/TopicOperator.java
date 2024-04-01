@@ -1051,10 +1051,14 @@ class TopicOperator {
         // Look up the private topic to discover the name of kube KafkaTopic
         return topicStore.read(topicName)
             .compose(storeTopic -> {
-                ResourceName resourceName = storeTopic != null ? storeTopic.getResourceName() : topicName.asKubeName();
+                TopicName topicNameNew = new TopicName(topicName.toString(), labels.labels().get("strimzi.io/cluster"));
+                ResourceName resourceName = storeTopic != null ? storeTopic.getResourceName() : topicNameNew.asKubeName();
                 return k8s.getFromName(resourceName).compose(topic -> {
                     reconciliation.observedTopicFuture(kafkaTopic != null ? topic : null);
                     Topic k8sTopic = TopicSerialization.fromTopicResource(topic);
+                    if (kafkaTopic != null && kafkaTopic.getTopicName() != null) {
+                        kafkaTopic.updateTopicNameClusterName(topicName.getClusterName());
+                    }
                     return reconcile(reconciliation, logContext.withKubeTopic(topic), topic, k8sTopic, kafkaTopic, storeTopic);
                 });
             });
@@ -1249,7 +1253,7 @@ class TopicOperator {
 
     private Future<Void> reconcileOnResourceChange(Reconciliation reconciliation, LogContext logContext, KafkaTopic topicResource, Topic k8sTopic,
                                            boolean isModify) {
-        TopicName topicName = new TopicName(topicResource);
+        TopicName topicName = new TopicName(topicResource, labels.labels().get("strimzi.io/cluster"));
 
         return checkForNameChange(topicName, topicResource)
             .onComplete(nameChanged -> {
@@ -1274,6 +1278,9 @@ class TopicOperator {
                         reconciliation.observedTopicFuture(null);
                         return Future.succeededFuture();
                     } else {
+                        if (kafkaTopic != null && kafkaTopic.getTopicName() != null) {
+                            kafkaTopic.updateTopicNameClusterName(topicName.getClusterName());
+                        }
                         return reconcile(reconciliation, logContext, topicResource, k8sTopic, kafkaTopic, privateTopic);
                     }
                 }));
@@ -1516,30 +1523,36 @@ class TopicOperator {
         if (topicsFromKafka.size() > 0) {
             List<Future<Void>> futures = new ArrayList<>();
             for (TopicName topicName : topicsFromKafka) {
-                LogContext logContext = LogContext.periodic(reconciliationType + "kafka " + topicName, namespace, topicName.asKubeName().toString());
-                futures.add(executeWithTopicLockHeld(logContext, topicName, new Reconciliation(logContext, "reconcile-from-kafka", false) {
+                TopicName topicNewName;
+                if (ResourceName.isValidResourceName(topicName.toString())) {
+                    topicNewName = topicName;
+                } else {
+                    topicNewName = new TopicName(topicName.toString(), labels.labels().get("strimzi.io/cluster"));
+                }
+                LogContext logContext = LogContext.periodic(reconciliationType + "kafka " + topicNewName, namespace, topicNewName.asKubeName().toString());
+                futures.add(executeWithTopicLockHeld(logContext, topicNewName, new Reconciliation(logContext, "reconcile-from-kafka", false) {
                     @Override
                     public Future<Void> execute() {
-                        return getFromTopicStore(topicName).recover(error -> {
-                            failed.put(topicName,
-                                    new OperatorException("Error getting topic " + topicName + " from topic store during "
+                        return getFromTopicStore(topicNewName).recover(error -> {
+                            failed.put(topicNewName,
+                                    new OperatorException("Error getting topic " + topicNewName + " from topic store during "
                                             + reconciliationType + " reconciliation", error));
                             return Future.succeededFuture();
                         }).compose(topic -> {
                             if (topic == null) {
-                                LOGGER.debugCr(logContext.toReconciliation(), "No private topic for topic {} in Kafka -> undetermined", topicName);
-                                undetermined.add(topicName);
+                                LOGGER.debugCr(logContext.toReconciliation(), "No private topic for topic {} in Kafka -> undetermined", topicNewName);
+                                undetermined.add(topicNewName);
                                 return Future.succeededFuture();
                             } else {
-                                LOGGER.debugCr(logContext.toReconciliation(), "Have private topic for topic {} in Kafka", topicName);
-                                return reconcileWithPrivateTopic(logContext, topicName, topic, this)
+                                LOGGER.debugCr(logContext.toReconciliation(), "Have private topic for topic {} in Kafka", topicNewName);
+                                return reconcileWithPrivateTopic(logContext, topicNewName, topic, this)
                                         .<Void>map(ignored -> {
-                                            LOGGER.debugCr(logContext.toReconciliation(), "{} reconcile success -> succeeded", topicName);
-                                            succeeded.add(topicName);
+                                            LOGGER.debugCr(logContext.toReconciliation(), "{} reconcile success -> succeeded", topicNewName);
+                                            succeeded.add(topicNewName);
                                             return null;
                                         }).recover(error -> {
-                                            LOGGER.debugCr(logContext.toReconciliation(), "{} reconcile error -> failed", topicName);
-                                            failed.put(topicName, error);
+                                            LOGGER.debugCr(logContext.toReconciliation(), "{} reconcile error -> failed", topicNewName);
+                                            failed.put(topicNewName, error);
                                             return Future.failedFuture(error);
                                         });
                             }
@@ -1596,7 +1609,7 @@ class TopicOperator {
                 })
                 .compose(i -> kafka.topicMetadata(logContext.toReconciliation(), topicName))
                 .compose(kafkaTopicMeta -> {
-                    Topic topicFromKafka = TopicSerialization.fromTopicMetadata(kafkaTopicMeta);
+                    Topic topicFromKafka = TopicSerialization.fromTopicMetadata(kafkaTopicMeta, labels.labels().get("strimzi.io/cluster"));
                     return reconcile(reconciliation, logContext, kafkaTopicResource, k8sTopic, topicFromKafka, privateTopic);
                 })
                 .onComplete(ar -> {
@@ -1635,18 +1648,23 @@ class TopicOperator {
             @Override
             public Future<Void> execute() {
                 Reconciliation self = this;
+                TopicName topicNameNew = new TopicName(topicName.toString(), labels.labels().get("strimzi.io/cluster"));
                 return Future.all(
                         k8s.getFromName(kubeName).map(kt -> {
                             observedTopicFuture(kt);
                             return kt;
                         }),
-                        getFromKafka(logContext.toReconciliation(), topicName),
-                        getFromTopicStore(topicName))
+                        getFromKafka(logContext.toReconciliation(), topicNameNew),
+                        getFromTopicStore(topicNameNew))
                     .compose(compositeResult -> {
                         KafkaTopic ktr = compositeResult.resultAt(0);
                         logContext.withKubeTopic(ktr);
                         Topic k8sTopic = TopicSerialization.fromTopicResource(ktr);
                         Topic kafkaTopic = compositeResult.resultAt(1);
+                        if (kafkaTopic != null && kafkaTopic.getTopicName() != null) {
+                            kafkaTopic.updateTopicNameClusterName(topicNameNew.getClusterName());
+
+                        }
                         Topic privateTopic = compositeResult.resultAt(2);
                         return reconcile(self, logContext, involvedObject, k8sTopic, kafkaTopic, privateTopic);
                     });

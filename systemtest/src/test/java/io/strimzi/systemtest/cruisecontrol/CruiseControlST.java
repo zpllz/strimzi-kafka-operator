@@ -77,9 +77,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class CruiseControlST extends AbstractST {
 
     private static final Logger LOGGER = LogManager.getLogger(CruiseControlST.class);
-    private static final String CRUISE_CONTROL_METRICS_TOPIC = "strimzi.cruisecontrol.metrics"; // partitions 1 , rf - 1
-    private static final String CRUISE_CONTROL_MODEL_TRAINING_SAMPLES_TOPIC = "strimzi.cruisecontrol.modeltrainingsamples"; // partitions 32 , rf - 2
-    private static final String CRUISE_CONTROL_PARTITION_METRICS_SAMPLES_TOPIC = "strimzi.cruisecontrol.partitionmetricsamples"; // partitions 32 , rf - 2
+    private static final String CRUISE_CONTROL_METRICS_TOPIC = "__strimzi_cruisecontrol_metrics"; // partitions 1 , rf - 1
+    private static final String CRUISE_CONTROL_MODEL_TRAINING_SAMPLES_TOPIC = "__strimzi_cruisecontrol_modeltrainingsamples"; // partitions 32 , rf - 2
+    private static final String CRUISE_CONTROL_PARTITION_METRICS_SAMPLES_TOPIC = "__strimzi_cruisecontrol_partitionmetricsamples"; // partitions 32 , rf - 2
 
     @IsolatedTest
     @KRaftWithoutUTONotSupported

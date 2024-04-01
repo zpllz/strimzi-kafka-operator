@@ -244,6 +244,27 @@ class TopicSerialization {
     }
 
     /**
+     * Create a Topic to reflect the given TopicMetadata.
+     */
+    public static Topic fromTopicMetadata(TopicMetadata meta, String clusterName) {
+        if (meta == null) {
+            return null;
+        }
+        Topic.Builder builder = new Topic.Builder()
+                .withTopicName(meta.getDescription().name(), clusterName)
+                .withNumPartitions(meta.getDescription().partitions().size())
+                .withNumReplicas((short) meta.getDescription().partitions().get(0).replicas().size())
+                .withMetadata(null);
+        for (ConfigEntry entry: meta.getConfig().entries()) {
+            if (entry.source() != ConfigEntry.ConfigSource.DEFAULT_CONFIG
+                    && entry.source() != ConfigEntry.ConfigSource.STATIC_BROKER_CONFIG) {
+                builder.withConfigEntry(entry.name(), entry.value());
+            }
+        }
+        return builder.build();
+    }
+
+    /**
      * Returns the UTF-8 encoded JSON to reflect the given Topic.
      * This is what is stored in the znodes owned by the {@link ZkTopicStore}.
      */

@@ -200,17 +200,17 @@ public enum CruiseControlConfigurationParameters {
     /**
      * Default topic name for the partition samples
      */
-    public static final String DEFAULT_PARTITION_METRIC_TOPIC_NAME = "strimzi.cruisecontrol.partitionmetricsamples";
+    public static final String DEFAULT_PARTITION_METRIC_TOPIC_NAME = "__strimzi_cruisecontrol_partitionmetricsamples";
 
     /**
      * Default topic name for the broker samples
      */
-    public static final String DEFAULT_BROKER_METRIC_TOPIC_NAME = "strimzi.cruisecontrol.modeltrainingsamples";
+    public static final String DEFAULT_BROKER_METRIC_TOPIC_NAME = "__strimzi_cruisecontrol_modeltrainingsamples";
 
     /**
      * Default topic name for the metrics reporter
      */
-    public static final String DEFAULT_METRIC_REPORTER_TOPIC_NAME = "strimzi.cruisecontrol.metrics";
+    public static final String DEFAULT_METRIC_REPORTER_TOPIC_NAME = "__strimzi_cruisecontrol_metrics";
 
     private final String value;
 

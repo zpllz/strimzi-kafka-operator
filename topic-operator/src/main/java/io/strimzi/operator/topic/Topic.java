@@ -90,6 +90,11 @@ public class Topic {
             return this;
         }
 
+        protected Builder withTopicName(String name, String clusterName) {
+            this.topicName = new TopicName(name, clusterName);
+            return this;
+        }
+
         protected Builder withMapName(ResourceName name) {
             this.resourceName = name;
             return this;
@@ -162,6 +167,9 @@ public class Topic {
         } else {
             return topicName.asKubeName();
         }
+    }
+    protected void updateTopicNameClusterName(String clusterName) {
+        topicName.updateClusterName(clusterName);
     }
 
     protected int getNumPartitions() {

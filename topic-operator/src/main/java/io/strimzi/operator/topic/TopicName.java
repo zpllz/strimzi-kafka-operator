@@ -11,12 +11,14 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Map;
 
 /**
  * Typesafe representation of the name of a topic.
  */
 class TopicName {
     private final String name;
+    private String clusterName;
 
     /**
      * Constructor
@@ -30,8 +32,18 @@ class TopicName {
         // TODO Shame we can't validate a topic name without relying on an internal class
         Topic.validate(name);
         this.name = name;
+        this.clusterName = null;
     }
 
+    public TopicName(String name, String clusterName) {
+        if (name == null || name.isEmpty()) {
+            throw new IllegalArgumentException();
+        }
+        // TODO Shame we can't validate a topic name without relying on an internal class
+        Topic.validate(name);
+        this.name = name;
+        this.clusterName = clusterName;
+    }
 
     /**
      * Constructor
@@ -42,6 +54,10 @@ class TopicName {
         this(kafkaTopic.getSpec() != null && kafkaTopic.getSpec().getTopicName() != null ? kafkaTopic.getSpec().getTopicName() : kafkaTopic.getMetadata().getName());
     }
 
+    public TopicName(KafkaTopic kafkaTopic, String clusterName) {
+        this(kafkaTopic.getSpec() != null && kafkaTopic.getSpec().getTopicName() != null ? kafkaTopic.getSpec().getTopicName() : kafkaTopic.getMetadata().getName(), clusterName);
+    }
+
     /**
      * Constructor
      *
@@ -49,6 +65,14 @@ class TopicName {
      */
     public String toString() {
         return this.name;
+    }
+
+    public String getClusterName() {
+        return this.clusterName;
+    }
+
+    public void updateClusterName(String clusterName) {
+        this.clusterName = clusterName;
     }
 
     /**
@@ -90,10 +114,15 @@ class TopicName {
         if (ResourceName.isValidResourceName(this.name)) {
             mname = new ResourceName(this.name);
         } else {
+            String tname = this.name;
+
+            if (this.clusterName != null && !this.clusterName.isEmpty()) {
+                tname = tname + "-" + this.clusterName;
+            }
             StringBuilder n = new StringBuilder();
-            for (int i = 0; i < this.name.length(); i++) {
-                char next = i < this.name.length() - 1 ? this.name.charAt(i + 1) : '\0';
-                char ch = this.name.charAt(i);
+            for (int i = 0; i < tname.length(); i++) {
+                char next = i < tname.length() - 1 ? tname.charAt(i + 1) : '\0';
+                char ch = tname.charAt(i);
                 if (isInRange('a', ch, 'z')
                         || isInRange('0', ch, '9')) {
                     n.append(ch);
@@ -133,7 +162,7 @@ class TopicName {
                 throw new RuntimeException("Couldn't get SHA1 MessageDigest", e);
             }
             final int sha1HexLength = 40;
-            byte[] sha1sum = md.digest(this.name.getBytes(StandardCharsets.UTF_8));
+            byte[] sha1sum = md.digest(tname.getBytes(StandardCharsets.UTF_8));
             int truncate = n.length() + sha1HexLength + SEP.length() - ResourceName.MAX_RESOURCE_NAME_LENGTH;
             if (truncate > 0) {
                 n.setLength(ResourceName.MAX_RESOURCE_NAME_LENGTH - (sha1HexLength + SEP.length()));
