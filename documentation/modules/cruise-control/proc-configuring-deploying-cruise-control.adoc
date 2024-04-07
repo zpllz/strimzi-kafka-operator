@@ -150,17 +150,17 @@ The following table shows the three topics that are automatically created when C
 ¦Function
 
 ¦metric.reporter.topic
-¦strimzi.cruisecontrol.metrics
+¦__strimzi_cruisecontrol_metrics
 ¦Strimzi Metrics Reporter
 ¦Stores the raw metrics from the Metrics Reporter in each Kafka broker.
 
 ¦partition.metric.sample.store.topic
-¦strimzi.cruisecontrol.partitionmetricsamples
+¦__strimzi_cruisecontrol_partitionmetricsamples
 ¦Cruise Control
 ¦Stores the derived metrics for each partition. These are created by the link:https://github.com/linkedin/cruise-control/wiki/Overview#metric-sample-aggregator[Metric Sample Aggregator^].
 
 ¦broker.metric.sample.store.topic
-¦strimzi.cruisecontrol.modeltrainingsamples
+¦__strimzi_cruisecontrol_modeltrainingsamples
 ¦Cruise Control
 ¦Stores the metrics samples used to create the link:https://github.com/linkedin/cruise-control/wiki/Overview#cluster-workload-model[Cluster Workload Model^].
 

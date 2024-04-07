@@ -32,9 +32,9 @@ public class CruiseControlUtils {
 
     private static final Logger LOGGER = LogManager.getLogger(CruiseControlUtils.class);
 
-    public static final String CRUISE_CONTROL_METRICS_TOPIC = "strimzi.cruisecontrol.metrics"; // partitions 1 , rf - 1
-    public static final String CRUISE_CONTROL_MODEL_TRAINING_SAMPLES_TOPIC = "strimzi.cruisecontrol.modeltrainingsamples"; // partitions 32 , rf - 2
-    public static final String CRUISE_CONTROL_PARTITION_METRICS_SAMPLES_TOPIC = "strimzi.cruisecontrol.partitionmetricsamples"; // partitions 32 , rf - 2
+    public static final String CRUISE_CONTROL_METRICS_TOPIC = "__strimzi_cruisecontrol_metrics"; // partitions 1 , rf - 1
+    public static final String CRUISE_CONTROL_MODEL_TRAINING_SAMPLES_TOPIC = "__strimzi_cruisecontrol_modeltrainingsamples"; // partitions 32 , rf - 2
+    public static final String CRUISE_CONTROL_PARTITION_METRICS_SAMPLES_TOPIC = "__strimzi_cruisecontrol_partitionmetricsamples"; // partitions 32 , rf - 2
 
     private static final int CRUISE_CONTROL_DEFAULT_PORT = 9090;
     private static final int CRUISE_CONTROL_METRICS_PORT = 9404;
@@ -86,7 +86,7 @@ public class CruiseControlUtils {
         String kafkaClusterName = kafkaProperties.getProperty("cluster-name");
         TestUtils.waitFor("Verify that kafka configuration " + kafkaProperties.toString() + " has correct cruise control metric reporter properties",
             Constants.GLOBAL_POLL_INTERVAL, Constants.GLOBAL_CRUISE_CONTROL_TIMEOUT, () ->
-            kafkaProperties.getProperty(CruiseControlConfigurationParameters.METRICS_TOPIC_NAME.getValue()).equals("strimzi.cruisecontrol.metrics") &&
+            kafkaProperties.getProperty(CruiseControlConfigurationParameters.METRICS_TOPIC_NAME.getValue()).equals("__strimzi_cruisecontrol_metrics") &&
             kafkaProperties.getProperty(CruiseControlConfigurationParameters.METRICS_REPORTER_SSL_ENDPOINT_ID_ALGO.getValue()).equals("HTTPS") &&
             kafkaProperties.getProperty(CruiseControlConfigurationParameters.METRICS_REPORTER_BOOTSTRAP_SERVERS.getValue()).equals(kafkaClusterName + "-kafka-brokers:9091") &&
             kafkaProperties.getProperty(CruiseControlConfigurationParameters.METRICS_REPORTER_SECURITY_PROTOCOL.getValue()).equals("SSL") &&
