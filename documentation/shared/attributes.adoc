@@ -24,13 +24,13 @@
 
 // Kafka upgrade attributes used in kafka upgrades section
 :DefaultKafkaVersion: 3.4.0
-:KafkaVersionLower: 3.3.1
+:KafkaVersionLower: 3.2.0
 :KafkaVersionHigher: 3.4.0
 :ExampleImageTagUpgrades: quay.io/strimzi/kafka:{ProductVersion}-kafka-{KafkaVersionHigher}
 
 //inter-broker protocol and log message version
 :DefaultInterBrokerVersion: 3.4
-:InterBrokerVersionLower: 3.3
+:InterBrokerVersionLower: 3.2
 :InterBrokerVersionHigher: 3.4
 
 // Source and download links
