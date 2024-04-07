@@ -76,6 +76,11 @@ public class ClusterOperatorConfig {
     public static final String STRIMZI_DEFAULT_KAFKA_EXPORTER_IMAGE = "STRIMZI_DEFAULT_KAFKA_EXPORTER_IMAGE";
 
     /**
+     * Configures the Kafka Client container image
+     */
+    public static final String STRIMZI_DEFAULT_KAFKA_CLIENT_IMAGE = "STRIMZI_DEFAULT_KAFKA_CLIENT_IMAGE";
+
+    /**
      * Configures the Topic Operator container image
      */
     public static final String STRIMZI_DEFAULT_TOPIC_OPERATOR_IMAGE = "STRIMZI_DEFAULT_TOPIC_OPERATOR_IMAGE";

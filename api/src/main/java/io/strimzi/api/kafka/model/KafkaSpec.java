@@ -39,6 +39,7 @@ public class KafkaSpec extends Spec {
     @SuppressWarnings("deprecation")
     private JmxTransSpec jmxTrans;
     private KafkaExporterSpec kafkaExporter;
+    private KafkaClientSpec kafkaClient;
     private CruiseControlSpec cruiseControl;
 
     private CertificateAuthority clientsCa;
@@ -111,6 +112,15 @@ public class KafkaSpec extends Spec {
 
     public void setMaintenanceTimeWindows(List<String> maintenanceTimeWindows) {
         this.maintenanceTimeWindows = maintenanceTimeWindows;
+    }
+
+    @Description("Configuration of the Kafka Client deployment.")
+    public KafkaClientSpec getKafkaClient() {
+        return kafkaClient;
+    }
+
+    public void setKafkaClient(KafkaClientSpec kakfaClient) {
+        this.kafkaClient = kakfaClient;
     }
 
     @Description("Configuration of the Kafka Exporter. Kafka Exporter can provide additional metrics, for example lag of consumer group at topic/partition.")
