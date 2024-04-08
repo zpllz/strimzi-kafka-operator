@@ -155,6 +155,7 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
                 .compose(state -> state.reconcileEntityOperator(clock))
                 .compose(state -> state.reconcileCruiseControl(clock))
                 .compose(state -> state.reconcileKafkaExporter(clock))
+                .compose(state -> state.reconcileStrimziClient(clock))
                 .compose(state -> state.reconcileJmxTrans())
 
                 // Finish the reconciliation
@@ -549,6 +550,22 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
         }
 
         /**
+         * Provider method for Strimzi Client reconciler. Overriding this method can be used to get mocked reconciler.
+         *
+         * @return  Kafka Exporter reconciler
+         */
+        StrimziClientReconciler strimziClientReconciler()   {
+            return new StrimziClientReconciler(
+                    reconciliation,
+                    config,
+                    supplier,
+                    kafkaAssembly,
+                    versions,
+                    clusterCa
+            );
+        }
+
+        /**
          * Run the reconciliation pipeline for the Kafka Exporter
          *
          * @param clock The clock for supplying the reconciler with the time instant of each reconciliation cycle.
@@ -558,6 +575,20 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
          */
         Future<ReconciliationState> reconcileKafkaExporter(Clock clock)    {
             return kafkaExporterReconciler()
+                    .reconcile(pfa.isOpenshift(), imagePullPolicy, imagePullSecrets, clock)
+                    .map(this);
+        }
+
+        /**
+         * Run the reconciliation pipeline for the Strimzi Client
+         *
+         * @param clock The clock for supplying the reconciler with the time instant of each reconciliation cycle.
+         *              That time is used for checking maintenance windows
+         *
+         * @return      Future with Reconciliation State
+         */
+        Future<ReconciliationState> reconcileStrimziClient(Clock clock)    {
+            return strimziClientReconciler()
                     .reconcile(pfa.isOpenshift(), imagePullPolicy, imagePullSecrets, clock)
                     .map(this);
         }

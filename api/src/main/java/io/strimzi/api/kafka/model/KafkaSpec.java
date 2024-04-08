@@ -38,6 +38,7 @@ public class KafkaSpec extends Spec {
     private CertificateAuthority clusterCa;
     private JmxTransSpec jmxTrans;
     private KafkaExporterSpec kafkaExporter;
+    private StrimziClientSpec strimziClient;
     private CruiseControlSpec cruiseControl;
 
     private CertificateAuthority clientsCa;
@@ -120,6 +121,15 @@ public class KafkaSpec extends Spec {
 
     public void setKafkaExporter(KafkaExporterSpec kafkaExporter) {
         this.kafkaExporter = kafkaExporter;
+    }
+
+    @Description("Configuration of the Strimzi client. Strimzi client can provide client pod for user.")
+    public StrimziClientSpec getStrimziClient() {
+        return strimziClient;
+    }
+
+    public void setStrimziClient(StrimziClientSpec strimziClient) {
+        this.strimziClient = strimziClient;
     }
 
     @Description("Configuration for Cruise Control deployment. Deploys a Cruise Control instance when specified")

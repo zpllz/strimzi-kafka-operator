@@ -26,6 +26,13 @@ COPY $KAFKA_DIST_DIR $KAFKA_HOME
 COPY ./scripts/ $KAFKA_HOME
 
 #####
+# Add Strimzi Client
+#####
+ENV STRIMZI_CLIENT_HOME=/opt/strimzi-client
+ENV STRIMZI_CLIENT_VERSION=1.6.0
+COPY ./client-scripts $STRIMZI_CLIENT_HOME
+
+#####
 # Add Kafka Exporter
 #####
 ENV KAFKA_EXPORTER_HOME=/opt/kafka-exporter
