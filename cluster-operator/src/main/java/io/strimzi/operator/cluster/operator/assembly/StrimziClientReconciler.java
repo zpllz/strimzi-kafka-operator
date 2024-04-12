@@ -5,9 +5,12 @@
 package io.strimzi.operator.cluster.operator.assembly;
 
 import io.fabric8.kubernetes.api.model.LocalObjectReference;
+import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.strimzi.api.kafka.model.Kafka;
+import io.strimzi.api.kafka.model.KafkaResources;
 import io.strimzi.api.kafka.model.StrimziClientResources;
+import io.strimzi.api.kafka.model.storage.Storage;
 import io.strimzi.operator.cluster.ClusterOperatorConfig;
 import io.strimzi.operator.cluster.model.Ca;
 import io.strimzi.operator.cluster.model.ClusterCa;
@@ -20,17 +23,17 @@ import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
-import io.strimzi.operator.common.operator.resource.DeploymentOperator;
-import io.strimzi.operator.common.operator.resource.ReconcileResult;
-import io.strimzi.operator.common.operator.resource.SecretOperator;
-import io.strimzi.operator.common.operator.resource.ServiceAccountOperator;
+import io.strimzi.operator.common.operator.resource.*;
 import io.vertx.core.Future;
 
 import java.time.Clock;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
- * Class used for reconciliation of Strimzi Client. This class contains both the steps of the Kafka Exporter
+ * Class used for reconciliation of Strimzi Client. This class contains both the steps of the Strimzi Client
  * reconciliation pipeline and is also used to store the state between them.
  */
 public class StrimziClientReconciler {
@@ -44,9 +47,12 @@ public class StrimziClientReconciler {
 
     private final DeploymentOperator deploymentOperator;
     private final SecretOperator secretOperator;
+    private final PvcOperator pvcOperator;
+    private final StorageClassOperator storageClassOperator;
     private final ServiceAccountOperator serviceAccountOperator;
 
     boolean existingKafkaExporterCertsChanged;
+    boolean pvcChanged;
 
 
     /**
@@ -75,9 +81,13 @@ public class StrimziClientReconciler {
 
         this.deploymentOperator = supplier.deploymentOperations;
         this.secretOperator = supplier.secretOperations;
+        this.pvcOperator = supplier.pvcOperations;
+        this.storageClassOperator = supplier.storageClassOperations;
         this.serviceAccountOperator = supplier.serviceAccountOperations;
 
         this.existingKafkaExporterCertsChanged = false;
+        this.pvcChanged = false;
+
     }
 
     /**
@@ -94,9 +104,11 @@ public class StrimziClientReconciler {
      */
     public Future<Void> reconcile(boolean isOpenShift, ImagePullPolicy imagePullPolicy, List<LocalObjectReference> imagePullSecrets, Clock clock)    {
         return serviceAccount()
+                .compose(i -> pvcs())
                 .compose(i -> certificatesSecret(clock))
                 .compose(i -> deployment(isOpenShift, imagePullPolicy, imagePullSecrets))
-                .compose(i -> waitForDeploymentReadiness());
+                .compose(i -> waitForDeploymentReadiness())
+                .compose(i -> deletePersistentClaims());
     }
 
     /**
@@ -123,6 +135,28 @@ public class StrimziClientReconciler {
      * @return      Future which completes when the reconciliation is done
      */
     private Future<Void> certificatesSecret(Clock clock) {
+//        if (strimziClient != null) {
+//            return secretOperator.getAsync(reconciliation.namespace(), StrimziClientResources.secretName(reconciliation.name()))
+//                    .compose(oldSecret -> {
+//                        return secretOperator
+//                                .reconcile(reconciliation, reconciliation.namespace(), StrimziClientResources.secretName(reconciliation.name()),
+//                                        strimziClient.generateSecret(clusterCa, Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant())))
+//                                .compose(patchResult -> {
+//                                    if (patchResult instanceof ReconcileResult.Patched) {
+//                                        // The secret is patched and some changes to the existing certificates actually occurred
+//                                        existingKafkaExporterCertsChanged = ModelUtils.doExistingCertificatesDiffer(oldSecret, patchResult.resource());
+//                                    } else {
+//                                        existingKafkaExporterCertsChanged = false;
+//                                    }
+//
+//                                    return Future.succeededFuture();
+//                                });
+//                    });
+//        } else {
+//            return secretOperator
+//                    .reconcile(reconciliation, reconciliation.namespace(), StrimziClientResources.secretName(reconciliation.name()), null)
+//                    .map((Void) null);
+//        }
         return Future.succeededFuture();
     }
 
@@ -147,8 +181,8 @@ public class StrimziClientReconciler {
                     .compose(patchResult -> {
                         if (patchResult instanceof ReconcileResult.Noop)   {
                             // Deployment needs ot be rolled because the certificate secret changed or older/expired cluster CA removed
-                            if (existingKafkaExporterCertsChanged || clusterCa.certsRemoved()) {
-                                LOGGER.infoCr(reconciliation, "Rolling Kafka Exporter to update or remove certificates");
+                            if (pvcChanged || existingKafkaExporterCertsChanged || clusterCa.certsRemoved()) {
+                                LOGGER.infoCr(reconciliation, "Rolling Strimzi Client to update or remove certificates");
                                 return StrimziClientRollingUpdate();
                             }
                         }
@@ -184,5 +218,42 @@ public class StrimziClientReconciler {
         } else {
             return Future.succeededFuture();
         }
+    }
+
+    /**
+     * Manages the PVCs needed by the Kafka cluster. This method only creates or updates the PVCs. Deletion of PVCs
+     * after scale-down happens only at the end of the reconciliation when they are not used anymore.
+     *
+     * @return  Completes when the PVCs were successfully created or updated
+     */
+    protected Future<Void> pvcs() {
+        List<PersistentVolumeClaim> pvcs = strimziClient.generatePersistentVolumeClaims();
+        return new PvcReconciler(reconciliation, pvcOperator, storageClassOperator)
+                .resizeAndReconcilePvcs(podIndex -> reconciliation.name(), pvcs)
+                .compose(podsToRestart -> {
+                    pvcChanged = true;
+                    return Future.succeededFuture();
+                });
+    }
+
+    /**
+     * Deletion of PVCs after the cluster is deleted is handled by owner reference and garbage collection. However,
+     * this would not help after scale-downs. Therefore, we check if there are any PVCs which should not be present
+     * and delete them when they are.
+     *
+     * This should be called only after the StatefulSet reconciliation, rolling update and scale-down when the PVCs
+     * are not used any more by the pods.
+     *
+     * @return  Future which completes when the PVCs which should be deleted are deleted
+     */
+    protected Future<Void> deletePersistentClaims() {
+        return pvcOperator.listAsync(reconciliation.namespace(), strimziClient.getSelectorLabels())
+                .compose(pvcs -> {
+                    List<String> maybeDeletePvcs = pvcs.stream().map(pvc -> pvc.getMetadata().getName()).collect(Collectors.toList());
+                    List<String> desiredPvcs = strimziClient.generatePersistentVolumeClaims().stream().map(pvc -> pvc.getMetadata().getName()).collect(Collectors.toList());
+
+                    return new PvcReconciler(reconciliation, pvcOperator, storageClassOperator)
+                            .deletePersistentClaims(maybeDeletePvcs, desiredPvcs);
+                });
     }
 }

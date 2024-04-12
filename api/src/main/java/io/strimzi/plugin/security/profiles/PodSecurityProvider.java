@@ -151,6 +151,30 @@ public interface PodSecurityProvider {
      *
      * @return  Security context which will be set for the Kafka Exporter container
      */
+    default SecurityContext strimziClientContainerSecurityContext(ContainerSecurityProviderContext context) {
+        return securityContextOrNull(context);
+    }
+
+    /**
+     * Provides the Pod security context for the Kafka Exporter pod. The default implementation just returns the security
+     * context configured by the user in the template section or null (no Pod security context).
+     *
+     * @param context   Provides the context which can be used to generate the Pod security context
+     *
+     * @return  Pod security context which will be set for the Kafka Exporter pod
+     */
+    default PodSecurityContext strimziClientPodSecurityContext(PodSecurityProviderContext context) {
+        return podSecurityContextOrNull(context);
+    }
+
+    /**
+     * Provides the (container) security context for the Kafka Exporter container. The default implementation just
+     * returns the security context configured by the user in the template section or null (no security context).
+     *
+     * @param context   Provides the context which can be used to generate the security context
+     *
+     * @return  Security context which will be set for the Kafka Exporter container
+     */
     default SecurityContext kafkaExporterContainerSecurityContext(ContainerSecurityProviderContext context) {
         return securityContextOrNull(context);
     }

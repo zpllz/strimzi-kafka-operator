@@ -4,24 +4,22 @@
  */
 package io.strimzi.operator.cluster.model;
 
-import io.fabric8.kubernetes.api.model.Container;
-import io.fabric8.kubernetes.api.model.ContainerBuilder;
-import io.fabric8.kubernetes.api.model.ContainerPort;
-import io.fabric8.kubernetes.api.model.EnvVar;
-import io.fabric8.kubernetes.api.model.HasMetadata;
-import io.fabric8.kubernetes.api.model.LocalObjectReference;
-import io.fabric8.kubernetes.api.model.Secret;
-import io.fabric8.kubernetes.api.model.SecurityContext;
-import io.fabric8.kubernetes.api.model.Volume;
+import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.strimzi.api.kafka.model.Probe;
 import io.strimzi.api.kafka.model.ContainerEnvVar;
 import io.strimzi.api.kafka.model.ProbeBuilder;
+import io.strimzi.api.kafka.model.storage.JbodStorage;
+import io.strimzi.api.kafka.model.storage.PersistentClaimStorage;
+import io.strimzi.api.kafka.model.storage.PersistentClaimStorageBuilder;
 import io.strimzi.api.kafka.model.Kafka;
 import io.strimzi.api.kafka.model.KafkaClusterSpec;
 import io.strimzi.api.kafka.model.StrimziClientResources;
 import io.strimzi.api.kafka.model.StrimziClientSpec;
 import io.strimzi.api.kafka.model.KafkaResources;
+import io.strimzi.api.kafka.model.storage.SingleVolumeStorage;
+import io.strimzi.api.kafka.model.storage.Storage;
+import io.strimzi.api.kafka.model.template.ResourceTemplate;
 import io.strimzi.api.kafka.model.template.StrimziClientTemplate;
 import io.strimzi.operator.cluster.ClusterOperatorConfig;
 import io.strimzi.operator.cluster.model.securityprofiles.ContainerSecurityProviderContextImpl;
@@ -32,7 +30,7 @@ import io.strimzi.operator.common.Util;
 import java.util.*;
 
 /**
- * Kafka Exporter model
+ * Strimzi Client model
  */
 public class StrimziClient extends AbstractModel {
     protected static final String COMPONENT_TYPE = "strimzi-client";
@@ -42,6 +40,9 @@ public class StrimziClient extends AbstractModel {
     protected static final String STRIMZI_CLIENT_USER_CERTS_VOLUME_MOUNT = "/etc/strimzi-client/strimzi-client-user-certs/";
     protected static final String CLUSTER_CA_CERTS_VOLUME_NAME = "cluster-ca-certs";
     protected static final String CLUSTER_CA_CERTS_VOLUME_MOUNT = "/etc/strimzi-client/cluster-ca-certs/";
+
+    protected static final String STRIMZI_CLIENT_DATA_VOLUME_NAME = "strimzi-client-data";
+    protected static final String STRIMZI_CLIENT_DATA_VOLUME_MOUNT = "/opt/data";
 
     // Configuration defaults
     /*test*/ static final int DEFAULT_HEALTHCHECK_DELAY = 15;
@@ -60,6 +61,8 @@ public class StrimziClient extends AbstractModel {
 
     protected List<ContainerEnvVar> templateContainerEnvVars;
     protected SecurityContext templateContainerSecurityContext;
+    private ResourceTemplate templatePersistentVolumeClaims;
+    private Storage pvcstorage;
 
     private static final Map<String, String> DEFAULT_POD_LABELS = new HashMap<>();
     static {
@@ -86,34 +89,39 @@ public class StrimziClient extends AbstractModel {
 
         this.mountPath = "/var/lib/kafka";
 
-        // Kafka Exporter is all about metrics - they are always enabled
+        // Strimzi Client is all about metrics - they are always enabled
         this.isMetricsEnabled = true;
+
+        this.pvcstorage = new PersistentClaimStorageBuilder()
+                .withDeleteClaim(true)
+                .withSize("20Gi")
+                .build();
 
     }
 
     /**
-     * Builds the KafkaExporter model from the Kafka custom resource. If KafkaExporter is not enabled, it will return null.
+     * Builds the Strimzi Client model from the Kafka custom resource. If Strimzi Client is not enabled, it will return null.
      *
      * @param reconciliation    Reconciliation marker for logging
      * @param kafkaAssembly     The Kafka CR
      * @param versions          The list of supported Kafka versions
      *
-     * @return                  KafkaExporter model object when Kafka Exporter is enabled or null if it is disabled.
+     * @return                  Strimzi Client model object when Strimzi Client is enabled or null if it is disabled.
      */
     public static StrimziClient fromCrd(Reconciliation reconciliation, Kafka kafkaAssembly, KafkaVersion.Lookup versions) {
         StrimziClientSpec spec = kafkaAssembly.getSpec().getStrimziClient();
 
         if (spec != null) {
-            StrimziClient kafkaExporter = new StrimziClient(reconciliation, kafkaAssembly);
+            StrimziClient strimziClient = new StrimziClient(reconciliation, kafkaAssembly);
 
-            kafkaExporter.setResources(spec.getResources());
+            strimziClient.setResources(spec.getResources());
 
             if (spec.getReadinessProbe() != null) {
-                kafkaExporter.setReadinessProbe(spec.getReadinessProbe());
+                strimziClient.setReadinessProbe(spec.getReadinessProbe());
             }
 
             if (spec.getLivenessProbe() != null) {
-                kafkaExporter.setLivenessProbe(spec.getLivenessProbe());
+                strimziClient.setLivenessProbe(spec.getLivenessProbe());
             }
 
             String image = spec.getImage();
@@ -121,38 +129,40 @@ public class StrimziClient extends AbstractModel {
                 KafkaClusterSpec kafkaClusterSpec = kafkaAssembly.getSpec().getKafka();
                 image = System.getenv().getOrDefault(ClusterOperatorConfig.STRIMZI_DEFAULT_STRIMZI_CLIENT_IMAGE, versions.kafkaImage(kafkaClusterSpec.getImage(), versions.defaultVersion().version()));
             }
-            kafkaExporter.setImage(image);
+            strimziClient.setImage(image);
 
             if (spec.getTemplate() != null) {
                 StrimziClientTemplate template = spec.getTemplate();
 
                 if (template.getDeployment() != null && template.getDeployment().getMetadata() != null) {
-                    kafkaExporter.templateDeploymentLabels = template.getDeployment().getMetadata().getLabels();
-                    kafkaExporter.templateDeploymentAnnotations = template.getDeployment().getMetadata().getAnnotations();
+                    strimziClient.templateDeploymentLabels = template.getDeployment().getMetadata().getLabels();
+                    strimziClient.templateDeploymentAnnotations = template.getDeployment().getMetadata().getAnnotations();
                 }
 
                 if (template.getContainer() != null) {
                     if (template.getContainer().getEnv() != null) {
-                        kafkaExporter.templateContainerEnvVars = template.getContainer().getEnv();
+                        strimziClient.templateContainerEnvVars = template.getContainer().getEnv();
                     }
                     if (template.getContainer().getSecurityContext() != null) {
-                        kafkaExporter.templateContainerSecurityContext = template.getContainer().getSecurityContext();
+                        strimziClient.templateContainerSecurityContext = template.getContainer().getSecurityContext();
                     }
                 }
 
                 if (template.getServiceAccount() != null && template.getServiceAccount().getMetadata() != null) {
-                    kafkaExporter.templateServiceAccountLabels = template.getServiceAccount().getMetadata().getLabels();
-                    kafkaExporter.templateServiceAccountAnnotations = template.getServiceAccount().getMetadata().getAnnotations();
+                    strimziClient.templateServiceAccountLabels = template.getServiceAccount().getMetadata().getLabels();
+                    strimziClient.templateServiceAccountAnnotations = template.getServiceAccount().getMetadata().getAnnotations();
                 }
 
-                ModelUtils.parseDeploymentTemplate(kafkaExporter, template.getDeployment());
-                ModelUtils.parsePodTemplate(kafkaExporter, template.getPod());
-                kafkaExporter.templatePodLabels = Util.mergeLabelsOrAnnotations(kafkaExporter.templatePodLabels, DEFAULT_POD_LABELS);
+                ModelUtils.parseDeploymentTemplate(strimziClient, template.getDeployment());
+                ModelUtils.parsePodTemplate(strimziClient, template.getPod());
+                strimziClient.templatePodLabels = Util.mergeLabelsOrAnnotations(strimziClient.templatePodLabels, DEFAULT_POD_LABELS);
             }
 
-            kafkaExporter.version = versions.supportedVersion(kafkaAssembly.getSpec().getKafka().getVersion()).version();
+            strimziClient.version = versions.supportedVersion(kafkaAssembly.getSpec().getKafka().getVersion()).version();
+            strimziClient.templatePersistentVolumeClaims = kafkaAssembly.getSpec().getKafka().getTemplate().getPersistentVolumeClaim();
 
-            return kafkaExporter;
+
+            return strimziClient;
         } else {
             return null;
         }
@@ -164,7 +174,7 @@ public class StrimziClient extends AbstractModel {
     }
 
     /**
-     * Generates Kafka Exporter Deployment
+     * Generates Strimzi Client Deployment
      *
      * @param isOpenShift       Flag indicating whether we are on OpenShift or not
      * @param imagePullPolicy   Image pull policy
@@ -182,7 +192,7 @@ public class StrimziClient extends AbstractModel {
                 getContainers(imagePullPolicy),
                 getVolumes(isOpenShift),
                 imagePullSecrets,
-                securityProvider.kafkaExporterPodSecurityContext(new PodSecurityProviderContextImpl(templateSecurityContext))
+                securityProvider.strimziClientPodSecurityContext(new PodSecurityProviderContextImpl(templateSecurityContext))
         );
     }
 
@@ -198,10 +208,10 @@ public class StrimziClient extends AbstractModel {
                 .withPorts(getContainerPortList())
                 .withResources(getResources())
                 .withVolumeMounts(createTempDirVolumeMount(),
-//                        VolumeUtils.createVolumeMount(STRIMZI_CLIENT_USER_CERTS_VOLUME_NAME, STRIMZI_CLIENT_USER_CERTS_VOLUME_MOUNT),
+                        VolumeUtils.createVolumeMount(STRIMZI_CLIENT_DATA_VOLUME_NAME, STRIMZI_CLIENT_DATA_VOLUME_MOUNT),
                         VolumeUtils.createVolumeMount(CLUSTER_CA_CERTS_VOLUME_NAME, CLUSTER_CA_CERTS_VOLUME_MOUNT))
                 .withImagePullPolicy(determineImagePullPolicy(imagePullPolicy, getImage()))
-                .withSecurityContext(securityProvider.kafkaExporterContainerSecurityContext(new ContainerSecurityProviderContextImpl(templateContainerSecurityContext)))
+                .withSecurityContext(securityProvider.strimziClientContainerSecurityContext(new ContainerSecurityProviderContextImpl(templateContainerSecurityContext)))
                 .build();
 
         containers.add(container);
@@ -209,11 +219,21 @@ public class StrimziClient extends AbstractModel {
         return containers;
     }
 
+    /**
+     * Generate the persistent volume claims for the storage It's called recursively on the related inner volumes if the
+     * storage is of {@link Storage#TYPE_JBOD} type.
+     * @return The PersistentVolumeClaims.
+     */
+    public List<PersistentVolumeClaim> generatePersistentVolumeClaims() {
+        return PersistentVolumeClaimUtils
+                .createPersistentVolumeClaims(componentName, namespace, replicas, pvcstorage, false, labels, ownerReference, templatePersistentVolumeClaims, templateStatefulSetLabels);
+    }
+
     @Override
     protected List<EnvVar> getEnvVars() {
         List<EnvVar> varList = new ArrayList<>();
 
-        varList.add(buildEnvVar(ENV_VAR_STRIMZI_CLIENT_KAFKA_SERVER, version));
+        varList.add(buildEnvVar(ENV_VAR_STRIMZI_CLIENT_KAFKA_VERSION, version));
         varList.add(buildEnvVar(ENV_VAR_STRIMZI_CLIENT_KAFKA_SERVER, KafkaResources.bootstrapServiceName(cluster) + ":" + KafkaCluster.REPLICATION_PORT));
         varList.add(buildEnvVar(ENV_VAR_STRIMZI_CLIENT_AUTHENTICATION_TYPE, "tls"));
 
@@ -229,7 +249,14 @@ public class StrimziClient extends AbstractModel {
         List<Volume> volumeList = new ArrayList<>(3);
 
         volumeList.add(createTempDirVolume());
-//        volumeList.add(VolumeUtils.createSecretVolume(STRIMZI_CLIENT_USER_CERTS_VOLUME_NAME, StrimziClientResources.secretName(cluster), isOpenShift));
+        if (pvcstorage != null) {
+            if (pvcstorage instanceof PersistentClaimStorage persistentStorage) {
+                String pvcBaseName = VolumeUtils.createVolumePrefix(persistentStorage.getId(), false) + "-" + componentName;
+                volumeList.add(VolumeUtils.createPvcVolume(STRIMZI_CLIENT_DATA_VOLUME_NAME, pvcBaseName + "-0"));
+            } else if (pvcstorage instanceof JbodStorage jbodStorage) {
+                volumeList.add(VolumeUtils.createPvcVolume(STRIMZI_CLIENT_DATA_VOLUME_NAME, componentName));
+            }
+        }
         volumeList.add(VolumeUtils.createSecretVolume(CLUSTER_CA_CERTS_VOLUME_NAME, AbstractModel.clusterCaCertSecretName(cluster), isOpenShift));
 
         return volumeList;
