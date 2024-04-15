@@ -51,7 +51,7 @@ public class StrimziClientReconciler {
     private final StorageClassOperator storageClassOperator;
     private final ServiceAccountOperator serviceAccountOperator;
 
-    boolean existingKafkaExporterCertsChanged;
+    boolean existingStrimziClientCertsChanged;
     boolean pvcChanged;
 
 
@@ -85,7 +85,7 @@ public class StrimziClientReconciler {
         this.storageClassOperator = supplier.storageClassOperations;
         this.serviceAccountOperator = supplier.serviceAccountOperations;
 
-        this.existingKafkaExporterCertsChanged = false;
+        this.existingStrimziClientCertsChanged = false;
         this.pvcChanged = false;
 
     }
@@ -135,29 +135,28 @@ public class StrimziClientReconciler {
      * @return      Future which completes when the reconciliation is done
      */
     private Future<Void> certificatesSecret(Clock clock) {
-//        if (strimziClient != null) {
-//            return secretOperator.getAsync(reconciliation.namespace(), StrimziClientResources.secretName(reconciliation.name()))
-//                    .compose(oldSecret -> {
-//                        return secretOperator
-//                                .reconcile(reconciliation, reconciliation.namespace(), StrimziClientResources.secretName(reconciliation.name()),
-//                                        strimziClient.generateSecret(clusterCa, Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant())))
-//                                .compose(patchResult -> {
-//                                    if (patchResult instanceof ReconcileResult.Patched) {
-//                                        // The secret is patched and some changes to the existing certificates actually occurred
-//                                        existingKafkaExporterCertsChanged = ModelUtils.doExistingCertificatesDiffer(oldSecret, patchResult.resource());
-//                                    } else {
-//                                        existingKafkaExporterCertsChanged = false;
-//                                    }
-//
-//                                    return Future.succeededFuture();
-//                                });
-//                    });
-//        } else {
-//            return secretOperator
-//                    .reconcile(reconciliation, reconciliation.namespace(), StrimziClientResources.secretName(reconciliation.name()), null)
-//                    .map((Void) null);
-//        }
-        return Future.succeededFuture();
+        if (strimziClient != null) {
+            return secretOperator.getAsync(reconciliation.namespace(), StrimziClientResources.secretName(reconciliation.name()))
+                    .compose(oldSecret -> {
+                        return secretOperator
+                                .reconcile(reconciliation, reconciliation.namespace(), StrimziClientResources.secretName(reconciliation.name()),
+                                        strimziClient.generateSecret(clusterCa, Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant())))
+                                .compose(patchResult -> {
+                                    if (patchResult instanceof ReconcileResult.Patched) {
+                                        // The secret is patched and some changes to the existing certificates actually occurred
+                                        existingStrimziClientCertsChanged = ModelUtils.doExistingCertificatesDiffer(oldSecret, patchResult.resource());
+                                    } else {
+                                        existingStrimziClientCertsChanged = false;
+                                    }
+
+                                    return Future.succeededFuture();
+                                });
+                    });
+        } else {
+            return secretOperator
+                    .reconcile(reconciliation, reconciliation.namespace(), StrimziClientResources.secretName(reconciliation.name()), null)
+                    .map((Void) null);
+        }
     }
 
     /**
@@ -181,7 +180,12 @@ public class StrimziClientReconciler {
                     .compose(patchResult -> {
                         if (patchResult instanceof ReconcileResult.Noop)   {
                             // Deployment needs ot be rolled because the certificate secret changed or older/expired cluster CA removed
-                            if (pvcChanged || existingKafkaExporterCertsChanged || clusterCa.certsRemoved()) {
+                            if (pvcChanged) {
+                                LOGGER.infoCr(reconciliation, "Rolling Strimzi Client to update PVCs");
+                                pvcChanged = false;
+                                return StrimziClientRollingUpdate();
+                            }
+                            if ( existingStrimziClientCertsChanged || clusterCa.certsRemoved()) {
                                 LOGGER.infoCr(reconciliation, "Rolling Strimzi Client to update or remove certificates");
                                 return StrimziClientRollingUpdate();
                             }
@@ -231,7 +235,9 @@ public class StrimziClientReconciler {
         return new PvcReconciler(reconciliation, pvcOperator, storageClassOperator)
                 .resizeAndReconcilePvcs(podIndex -> reconciliation.name(), pvcs)
                 .compose(podsToRestart -> {
-                    pvcChanged = true;
+                    if (!podsToRestart.isEmpty()) {
+                        pvcChanged = true;
+                    }
                     return Future.succeededFuture();
                 });
     }
