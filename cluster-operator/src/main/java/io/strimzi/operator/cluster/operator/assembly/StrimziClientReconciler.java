@@ -5,11 +5,13 @@
 package io.strimzi.operator.cluster.operator.assembly;
 
 import io.fabric8.kubernetes.api.model.LocalObjectReference;
+import io.fabric8.kubernetes.api.model.ObjectMetaBuilder;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
-import io.strimzi.api.kafka.model.Kafka;
-import io.strimzi.api.kafka.model.KafkaResources;
-import io.strimzi.api.kafka.model.StrimziClientResources;
+import io.fabric8.kubernetes.client.KubernetesClient;
+import io.strimzi.api.kafka.Crds;
+import io.strimzi.api.kafka.model.*;
+import io.strimzi.api.kafka.model.KafkaUserBuilder;
 import io.strimzi.api.kafka.model.storage.Storage;
 import io.strimzi.operator.cluster.ClusterOperatorConfig;
 import io.strimzi.operator.cluster.model.Ca;
@@ -26,9 +28,11 @@ import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.operator.resource.*;
 import io.vertx.core.Future;
 
+import java.awt.*;
 import java.time.Clock;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -50,6 +54,7 @@ public class StrimziClientReconciler {
     private final PvcOperator pvcOperator;
     private final StorageClassOperator storageClassOperator;
     private final ServiceAccountOperator serviceAccountOperator;
+    private final KubernetesClient k8sClient;
 
     boolean existingStrimziClientCertsChanged;
     boolean pvcChanged;
@@ -84,6 +89,7 @@ public class StrimziClientReconciler {
         this.pvcOperator = supplier.pvcOperations;
         this.storageClassOperator = supplier.storageClassOperations;
         this.serviceAccountOperator = supplier.serviceAccountOperations;
+        this.k8sClient = supplier.secretOperations.getKubernetesClient();
 
         this.existingStrimziClientCertsChanged = false;
         this.pvcChanged = false;
@@ -105,7 +111,7 @@ public class StrimziClientReconciler {
     public Future<Void> reconcile(boolean isOpenShift, ImagePullPolicy imagePullPolicy, List<LocalObjectReference> imagePullSecrets, Clock clock)    {
         return serviceAccount()
                 .compose(i -> pvcs())
-                .compose(i -> certificatesSecret(clock))
+                .compose(i -> createAndUpdateKafkaUser())
                 .compose(i -> deployment(isOpenShift, imagePullPolicy, imagePullSecrets))
                 .compose(i -> waitForDeploymentReadiness())
                 .compose(i -> deletePersistentClaims());
@@ -126,38 +132,6 @@ public class StrimziClientReconciler {
                 ).map((Void) null);
     }
 
-    /**
-     * Manages the Strimzi Client Secret with certificates.
-     *
-     * @param clock The clock for supplying the reconciler with the time instant of each reconciliation cycle.
-     *              That time is used for checking maintenance windows
-     *
-     * @return      Future which completes when the reconciliation is done
-     */
-    private Future<Void> certificatesSecret(Clock clock) {
-        if (strimziClient != null) {
-            return secretOperator.getAsync(reconciliation.namespace(), StrimziClientResources.secretName(reconciliation.name()))
-                    .compose(oldSecret -> {
-                        return secretOperator
-                                .reconcile(reconciliation, reconciliation.namespace(), StrimziClientResources.secretName(reconciliation.name()),
-                                        strimziClient.generateSecret(clusterCa, Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant())))
-                                .compose(patchResult -> {
-                                    if (patchResult instanceof ReconcileResult.Patched) {
-                                        // The secret is patched and some changes to the existing certificates actually occurred
-                                        existingStrimziClientCertsChanged = ModelUtils.doExistingCertificatesDiffer(oldSecret, patchResult.resource());
-                                    } else {
-                                        existingStrimziClientCertsChanged = false;
-                                    }
-
-                                    return Future.succeededFuture();
-                                });
-                    });
-        } else {
-            return secretOperator
-                    .reconcile(reconciliation, reconciliation.namespace(), StrimziClientResources.secretName(reconciliation.name()), null)
-                    .map((Void) null);
-        }
-    }
 
     /**
      * Manages the Strimzi Client deployment.
@@ -261,5 +235,27 @@ public class StrimziClientReconciler {
                     return new PvcReconciler(reconciliation, pvcOperator, storageClassOperator)
                             .deletePersistentClaims(maybeDeletePvcs, desiredPvcs);
                 });
+    }
+
+    protected Future<Void> createAndUpdateKafkaUser() {
+        if (strimziClient != null) {
+            KafkaUserAuthentication authentication;
+            if (strimziClient.getAuthenticationType().equals("tls")) {
+                authentication = new KafkaUserTlsClientAuthentication();
+            } else if (strimziClient.getAuthenticationType().equals("scram-sha-512")) {
+                authentication = new KafkaUserScramSha512ClientAuthentication();
+            } else {
+                authentication = null;
+            }
+            KafkaUser user = Crds.kafkaUserOperation(k8sClient).inNamespace(strimziClient.getNamespace()).withName(strimziClient.getClientUserName()).get();
+            if (user == null) {
+                Crds.kafkaUserOperation(k8sClient).inNamespace(strimziClient.getNamespace()).resource(strimziClient.createKafkaUserResource(authentication)).create();
+            } else if (user.getSpec().getAuthentication() != null && !user.getSpec().getAuthentication().equals(authentication)) {
+                KafkaUser updateKafkaUser = new KafkaUserBuilder(user).build();
+                updateKafkaUser.getSpec().setAuthentication(authentication);
+                Crds.kafkaUserOperation(k8sClient).inNamespace(strimziClient.getNamespace()).withName(strimziClient.getClientUserName()).patch(updateKafkaUser);
+            }
+        }
+        return Future.succeededFuture();
     }
 }

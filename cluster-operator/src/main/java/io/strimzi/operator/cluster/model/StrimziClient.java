@@ -6,17 +6,14 @@ package io.strimzi.operator.cluster.model;
 
 import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
+import io.fabric8.kubernetes.client.KubernetesClient;
+import io.strimzi.api.kafka.Crds;
+import io.strimzi.api.kafka.model.*;
 import io.strimzi.api.kafka.model.Probe;
-import io.strimzi.api.kafka.model.ContainerEnvVar;
 import io.strimzi.api.kafka.model.ProbeBuilder;
 import io.strimzi.api.kafka.model.storage.JbodStorage;
 import io.strimzi.api.kafka.model.storage.PersistentClaimStorage;
 import io.strimzi.api.kafka.model.storage.PersistentClaimStorageBuilder;
-import io.strimzi.api.kafka.model.Kafka;
-import io.strimzi.api.kafka.model.KafkaClusterSpec;
-import io.strimzi.api.kafka.model.StrimziClientResources;
-import io.strimzi.api.kafka.model.StrimziClientSpec;
-import io.strimzi.api.kafka.model.KafkaResources;
 import io.strimzi.api.kafka.model.storage.SingleVolumeStorage;
 import io.strimzi.api.kafka.model.storage.Storage;
 import io.strimzi.api.kafka.model.template.ResourceTemplate;
@@ -26,6 +23,7 @@ import io.strimzi.operator.cluster.model.securityprofiles.ContainerSecurityProvi
 import io.strimzi.operator.cluster.model.securityprofiles.PodSecurityProviderContextImpl;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.Util;
+import io.vertx.core.Future;
 
 import java.util.*;
 
@@ -58,11 +56,12 @@ public class StrimziClient extends AbstractModel {
 
     protected String authenticationType;
     protected String version;
+    protected String clientUserName;
 
     protected List<ContainerEnvVar> templateContainerEnvVars;
     protected SecurityContext templateContainerSecurityContext;
     private ResourceTemplate templatePersistentVolumeClaims;
-    private Storage pvcstorage;
+    private Storage pvcStorage;
 
     private static final Map<String, String> DEFAULT_POD_LABELS = new HashMap<>();
     static {
@@ -92,10 +91,11 @@ public class StrimziClient extends AbstractModel {
         // Strimzi Client is all about metrics - they are always enabled
         this.isMetricsEnabled = true;
 
-        this.pvcstorage = new PersistentClaimStorageBuilder()
+        this.pvcStorage = new PersistentClaimStorageBuilder()
                 .withDeleteClaim(true)
                 .withSize("20Gi")
                 .build();
+        clientUserName = labels.labels.get("strimzi.io/cluster") + "-" + "strimzi-client" + "-" + "user";
 
     }
 
@@ -160,7 +160,11 @@ public class StrimziClient extends AbstractModel {
 
             strimziClient.version = versions.supportedVersion(kafkaAssembly.getSpec().getKafka().getVersion()).version();
             strimziClient.templatePersistentVolumeClaims = kafkaAssembly.getSpec().getKafka().getTemplate().getPersistentVolumeClaim();
-
+            if (!kafkaAssembly.getSpec().getKafka().getListeners().isEmpty() && kafkaAssembly.getSpec().getKafka().getListeners().get(0).getAuth() != null) {
+                strimziClient.authenticationType = kafkaAssembly.getSpec().getKafka().getListeners().get(0).getAuth().getType();
+            } else {
+                strimziClient.authenticationType = "";
+            }
 
             return strimziClient;
         } else {
@@ -209,7 +213,8 @@ public class StrimziClient extends AbstractModel {
                 .withResources(getResources())
                 .withVolumeMounts(createTempDirVolumeMount(),
                         VolumeUtils.createVolumeMount(STRIMZI_CLIENT_DATA_VOLUME_NAME, STRIMZI_CLIENT_DATA_VOLUME_MOUNT),
-                        VolumeUtils.createVolumeMount(CLUSTER_CA_CERTS_VOLUME_NAME, CLUSTER_CA_CERTS_VOLUME_MOUNT))
+                        VolumeUtils.createVolumeMount(CLUSTER_CA_CERTS_VOLUME_NAME, CLUSTER_CA_CERTS_VOLUME_MOUNT),
+                        VolumeUtils.createVolumeMount(STRIMZI_CLIENT_USER_CERTS_VOLUME_NAME, STRIMZI_CLIENT_USER_CERTS_VOLUME_MOUNT))
                 .withImagePullPolicy(determineImagePullPolicy(imagePullPolicy, getImage()))
                 .withSecurityContext(securityProvider.strimziClientContainerSecurityContext(new ContainerSecurityProviderContextImpl(templateContainerSecurityContext)))
                 .build();
@@ -226,7 +231,7 @@ public class StrimziClient extends AbstractModel {
      */
     public List<PersistentVolumeClaim> generatePersistentVolumeClaims() {
         return PersistentVolumeClaimUtils
-                .createPersistentVolumeClaims(componentName, namespace, replicas, pvcstorage, false, labels, ownerReference, templatePersistentVolumeClaims, templateStatefulSetLabels);
+                .createPersistentVolumeClaims(componentName, namespace, replicas, pvcStorage, false, labels, ownerReference, templatePersistentVolumeClaims, templateStatefulSetLabels);
     }
 
     @Override
@@ -235,7 +240,7 @@ public class StrimziClient extends AbstractModel {
 
         varList.add(buildEnvVar(ENV_VAR_STRIMZI_CLIENT_KAFKA_VERSION, version));
         varList.add(buildEnvVar(ENV_VAR_STRIMZI_CLIENT_KAFKA_SERVER, KafkaResources.bootstrapServiceName(cluster) + ":" + KafkaCluster.REPLICATION_PORT));
-        varList.add(buildEnvVar(ENV_VAR_STRIMZI_CLIENT_AUTHENTICATION_TYPE, "tls"));
+        varList.add(buildEnvVar(ENV_VAR_STRIMZI_CLIENT_AUTHENTICATION_TYPE, authenticationType));
 
         // Add shared environment variables used for all containers
         varList.addAll(getRequiredEnvVars());
@@ -249,17 +254,53 @@ public class StrimziClient extends AbstractModel {
         List<Volume> volumeList = new ArrayList<>(3);
 
         volumeList.add(createTempDirVolume());
-        if (pvcstorage != null) {
-            if (pvcstorage instanceof PersistentClaimStorage persistentStorage) {
+        if (pvcStorage != null) {
+            if (pvcStorage instanceof PersistentClaimStorage persistentStorage) {
                 String pvcBaseName = VolumeUtils.createVolumePrefix(persistentStorage.getId(), false) + "-" + componentName;
                 volumeList.add(VolumeUtils.createPvcVolume(STRIMZI_CLIENT_DATA_VOLUME_NAME, pvcBaseName + "-0"));
-            } else if (pvcstorage instanceof JbodStorage jbodStorage) {
+            } else if (pvcStorage instanceof JbodStorage jbodStorage) {
                 volumeList.add(VolumeUtils.createPvcVolume(STRIMZI_CLIENT_DATA_VOLUME_NAME, componentName));
             }
         }
         volumeList.add(VolumeUtils.createSecretVolume(CLUSTER_CA_CERTS_VOLUME_NAME, AbstractModel.clusterCaCertSecretName(cluster), isOpenShift));
+        volumeList.add(VolumeUtils.createSecretVolume(STRIMZI_CLIENT_USER_CERTS_VOLUME_NAME, clientUserName, isOpenShift));
 
         return volumeList;
+    }
+
+    public KafkaUser createKafkaUserResource(KafkaUserAuthentication authentication) {
+        Map<String, String> labelsInput = Collections.singletonMap("strimzi.io/cluster", labels.labels.get("strimzi.io/cluster"));
+        return new KafkaUserBuilder()
+                .withMetadata(
+                        new ObjectMetaBuilder()
+                                .withNamespace(namespace)
+                                .withName(clientUserName)
+                                .withLabels(labelsInput)
+                                .build()
+                )
+                .withNewSpec()
+                    .withAuthentication(authentication)
+                    .withNewKafkaUserAuthorizationSimple()
+                        .addNewAcl()
+                            .withNewAclRuleTopicResource()
+                                .withName("*").endAclRuleTopicResource()
+                            .withOperations(AclOperation.DESCRIBE, AclOperation.READ)
+                        .endAcl()
+                    .endKafkaUserAuthorizationSimple()
+                .endSpec()
+                .build();
+    }
+
+    public String getNamespace() {
+        return this.namespace;
+    }
+
+    public String getClientUserName() {
+        return this.clientUserName;
+    }
+
+    public String getAuthenticationType() {
+        return this.authenticationType;
     }
 
     @Override

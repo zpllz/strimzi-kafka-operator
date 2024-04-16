@@ -135,7 +135,7 @@ public class Labels {
      */
     public static final Labels EMPTY = new Labels(emptyMap());
 
-    private final Map<String, String> labels;
+    public final Map<String, String> labels;
 
     /**
      * @param additionalLabels The labels

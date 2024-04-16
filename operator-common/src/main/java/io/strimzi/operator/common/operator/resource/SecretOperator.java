@@ -25,6 +25,15 @@ public class SecretOperator extends AbstractNamespacedResourceOperator<Kubernete
         super(vertx, client, "Secret");
     }
 
+    /**
+     * Get the Kubernetes client.
+     *
+     * @return The Kubernetes client.
+     */
+    public KubernetesClient getKubernetesClient() {
+        return this.client;
+    }
+
     @Override
     protected MixedOperation<Secret, SecretList, Resource<Secret>> operation() {
         return client.secrets();
