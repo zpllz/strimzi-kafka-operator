@@ -51,10 +51,13 @@ public class StrimziClient extends AbstractModel {
     protected static final String ENV_VAR_STRIMZI_CLIENT_KAFKA_VERSION = "STRIMZI_CLIENT_KAFKA_VERSION";
     protected static final String ENV_VAR_STRIMZI_CLIENT_KAFKA_SERVER = "STRIMZI_CLIENT_KAFKA_SERVER";
     protected static final String ENV_VAR_STRIMZI_CLIENT_AUTHENTICATION_TYPE = "STRIMZI_CLIENT_AUTHENTICATION_TYPE";
+    protected static final String ENV_VAR_STRIMZI_CLIENT_USE_TLS = "STRIMZI_CLIENT_USE_TLS";
+    protected static final String ENV_VAR_STRIMZI_CLIENT_KAFKA_OPTS = "KAFKA_OPTS";
 
     protected static final String CO_ENV_VAR_CUSTOM_STRIMZI_CLIENT_POD_LABELS = "STRIMZI_CUSTOM_STRIMZI_CLIENT_LABELS";
 
     protected String authenticationType;
+    protected boolean useTls;
     protected String version;
     protected String clientUserName;
 
@@ -162,6 +165,7 @@ public class StrimziClient extends AbstractModel {
             strimziClient.templatePersistentVolumeClaims = kafkaAssembly.getSpec().getKafka().getTemplate().getPersistentVolumeClaim();
             if (!kafkaAssembly.getSpec().getKafka().getListeners().isEmpty() && kafkaAssembly.getSpec().getKafka().getListeners().get(0).getAuth() != null) {
                 strimziClient.authenticationType = kafkaAssembly.getSpec().getKafka().getListeners().get(0).getAuth().getType();
+                strimziClient.useTls = kafkaAssembly.getSpec().getKafka().getListeners().get(0).isTls();
             } else {
                 strimziClient.authenticationType = "";
             }
@@ -241,6 +245,10 @@ public class StrimziClient extends AbstractModel {
         varList.add(buildEnvVar(ENV_VAR_STRIMZI_CLIENT_KAFKA_VERSION, version));
         varList.add(buildEnvVar(ENV_VAR_STRIMZI_CLIENT_KAFKA_SERVER, KafkaResources.bootstrapServiceName(cluster) + ":" + KafkaCluster.REPLICATION_PORT));
         varList.add(buildEnvVar(ENV_VAR_STRIMZI_CLIENT_AUTHENTICATION_TYPE, authenticationType));
+        varList.add(buildEnvVar(ENV_VAR_STRIMZI_CLIENT_USE_TLS, String.valueOf(useTls)));
+        if (authenticationType.equals("scram-sha-512")) {
+            varList.add(buildEnvVar(ENV_VAR_STRIMZI_CLIENT_KAFKA_OPTS, "-Djava.security.auth.login.config=/opt/kafka/config/jaas.conf"));
+        }
 
         // Add shared environment variables used for all containers
         varList.addAll(getRequiredEnvVars());
@@ -284,7 +292,7 @@ public class StrimziClient extends AbstractModel {
                         .addNewAcl()
                             .withNewAclRuleTopicResource()
                                 .withName("*").endAclRuleTopicResource()
-                            .withOperations(AclOperation.DESCRIBE, AclOperation.READ)
+                            .withOperations(AclOperation.DESCRIBE)
                         .endAcl()
                     .endKafkaUserAuthorizationSimple()
                 .endSpec()

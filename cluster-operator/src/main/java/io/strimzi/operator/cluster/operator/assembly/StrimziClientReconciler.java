@@ -250,7 +250,7 @@ public class StrimziClientReconciler {
             KafkaUser user = Crds.kafkaUserOperation(k8sClient).inNamespace(strimziClient.getNamespace()).withName(strimziClient.getClientUserName()).get();
             if (user == null) {
                 Crds.kafkaUserOperation(k8sClient).inNamespace(strimziClient.getNamespace()).resource(strimziClient.createKafkaUserResource(authentication)).create();
-            } else if (user.getSpec().getAuthentication() != null && !user.getSpec().getAuthentication().equals(authentication)) {
+            } else if (authentication != null && user.getSpec().getAuthentication() != null && !user.getSpec().getAuthentication().equals(authentication)) {
                 KafkaUser updateKafkaUser = new KafkaUserBuilder(user).build();
                 updateKafkaUser.getSpec().setAuthentication(authentication);
                 Crds.kafkaUserOperation(k8sClient).inNamespace(strimziClient.getNamespace()).withName(strimziClient.getClientUserName()).patch(updateKafkaUser);
